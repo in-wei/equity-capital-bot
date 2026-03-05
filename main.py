@@ -30,8 +30,8 @@ import numpy as np
 # ======================
 STOCKS = ["2330", "2317", "2454", "2303", "2891"]  # 要監控的股票
 OLLAMA_MODEL = "qwen2.5:14b"                       # Ollama模型
-LINE_CHANNEL_ACCESS_TOKEN = "T0E9VvCy+fZs+SnzDQZS7tw9C3C0GIpc1p6ac5YIjdVdbk18TuVwzyrZH6nDrFDQyMQn5u9up1+83W3BlILFPllBjgdjyOS7fLrBI8JXoDFPz0gEPNKDdMLLLtbUcQ0yksg7RJTabK9oNW0WC+RF0wFIS9xybk1bpjJUhI9NTk0="  # LINE API token
-LINE_USER_ID = "U9a9c1056fa76e4973b3aeed30ac1a531"                       # 推播對象
+LINE_CHANNEL_ACCESS_TOKEN = Line_Channel_Token  # LINE API token
+LINE_USER_ID = Line_User_Id                       # 推播對象
 DEFAULT_MIN_CONFIDENCE = 0.75                      # 預設信心閾值
 BACKTEST_DAYS = 90                                 # 回測最近天數
 SHARPE_THRESHOLD = 0.3                             # 夏普低於此則修正
