@@ -1,0 +1,4 @@
+line-bot-sdk
+fastapi
+uvicorn
+ollama==0.4.5   # 或最新版，建議不指定版本讓它自動拿最新
