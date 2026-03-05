@@ -11,6 +11,13 @@ configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 line_bot_api = MessagingApi(ApiClient(configuration))
 
 handler = WebhookHandler(CHANNEL_SECRET)   # ← 關鍵！這裡初始化 handler
+
+
+@app.route('/')
+def index():
+    """首頁：顯示產品或歡迎訊息"""
+    return redirect("hello world")
+
 @app.post("/callback")
 async def callback(request: Request):
     signature = request.headers.get("X-Line-Signature")
