@@ -30,4 +30,4 @@ if __name__ == "__main__":
     # 在部署到正式環境時，請將 debug 設為 False
     print("LINE Bot Server 啟動中...")
     # 為了讓 LINE Bot 運作，你需要將這個服務暴露在網路上 (e.g. 使用 ngrok)
-    app.run(host='0.0.0.0', port=os.environ.get('PORT', 5000), debug=True)
+    app.run(host='0.0.0.0', port=os.environ.get('PORT', 8080), debug=True)
