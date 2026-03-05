@@ -17,26 +17,30 @@ configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 line_bot_api = MessagingApi(ApiClient(configuration))
 
 handler = WebhookHandler(CHANNEL_SECRET)   # ← 關鍵！這裡初始化 handler
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "uptime": "running"}
 
 @app.post("/callback")
 async def callback(request: Request):
+    if not handler:
+        raise HTTPException(500, detail="Channel secret not set")
+
     signature = request.headers.get("X-Line-Signature")
+    if not signature:
+        raise HTTPException(400, detail="Missing signature")
+
     body_bytes = await request.body()
     body = body_bytes.decode("utf-8")
-    
-    print("Request body:", body)
-    print("Signature:", signature)
-    
-    if not signature:
-        raise HTTPException(status_code=400, detail="Missing X-Line-Signature")
-    
+
+    print("Webhook received → body:", body[:200])  # 只印前200字避免 log 爆
+
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        print("Invalid signature!")
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        raise HTTPException(400, detail="Invalid signature")
     except Exception as e:
-        print("Error:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-    
+        print("Webhook error:", str(e))
+        raise HTTPException(500, detail=str(e))
+
     return {"status": "ok"}
