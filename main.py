@@ -9,16 +9,25 @@ line_bot_api = MessagingApi(ApiClient(configuration))
 
 @app.post("/callback")
 async def callback(request: Request):
-    # 這裡驗證 signature（用 line-bot-sdk 內建 middleware 更簡單）
-    body = await request.body()
-    signature = request.headers.get('X-Line-Signature')
-    # ... 驗證邏輯 ...
+    # 取得請求標頭中的 X-Line-Signature
+    signature = request.headers['X-Line-Signature']
+
+    # 取得請求主體文字
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body: " + body)
+
+    # 處理 webhook 主體
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        print("Invalid signature. Please check your channel access token/secret.")
+        abort(400)
+
+    return 'OK'
     
-    events = ...  # 解析 body
-    for event in events:
-        if isinstance(event, MessageEvent) and isinstance(event.message, TextMessageContent):
-            line_bot_api.reply_message(
-                reply_token=event.reply_token,
-                messages=[{"type": "text", "text": event.message.text}]
-            )
-    return "OK"
+if __name__ == "__main__":
+    # 在本機運行時，將 debug 設為 True，方便開發
+    # 在部署到正式環境時，請將 debug 設為 False
+    print("LINE Bot Server 啟動中...")
+    # 為了讓 LINE Bot 運作，你需要將這個服務暴露在網路上 (e.g. 使用 ngrok)
+    app.run(host='0.0.0.0', port=os.environ.get('PORT', 5000), debug=True)
