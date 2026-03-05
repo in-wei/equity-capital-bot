@@ -4,7 +4,7 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 import os
 
 app = FastAPI()
-configuration = Configuration(access_token=os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
+configuration = Configuration(access_token=os.getenv('Line_Channel_Token'))
 line_bot_api = MessagingApi(ApiClient(configuration))
 
 @app.post("/callback")
