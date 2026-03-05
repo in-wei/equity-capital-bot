@@ -24,7 +24,20 @@ async def callback(request: Request):
         abort(400)
 
     return 'OK'
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    """
+    處理接收到的文字訊息，並解析指令以修改或顯示參數。
+    """
+    text = event.message.text.strip()
+    reply_text = text
     
+    # 發送回應
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply_text)
+    )
+
 if __name__ == "__main__":
     # 在本機運行時，將 debug 設為 True，方便開發
     # 在部署到正式環境時，請將 debug 設為 False
