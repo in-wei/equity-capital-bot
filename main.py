@@ -4,7 +4,7 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 import os
 
 # 從環境變數拿取（Railway/Render 要在 Variables 設定）
-CHANNEL_SECRET = os.getenv("Line_User_Id")       # ← 一定要設這個！
+CHANNEL_SECRET = os.getenv("Chanal_Secert")       # ← 一定要設這個！
 CHANNEL_ACCESS_TOKEN = os.getenv("Line_Channel_Token")
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
