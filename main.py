@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
+import uvicorn
 import os
 
 # 根路徑：用來確認伺服器是否活著
@@ -46,8 +47,6 @@ async def callback(request: Request):
     return {"status": "ok"}
 
 if __name__ == "__main__":
-    import uvicorn
-    import os
 
     port = int(os.getenv("PORT", 8000))  # Railway/Render 會設 PORT，fallback 8000 給本地測試
     uvicorn.run(
