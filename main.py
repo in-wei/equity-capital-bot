@@ -5,6 +5,8 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import uvicorn
 import os
 
+app = FastAPI()
+
 # 根路徑：用來確認伺服器是否活著
 @app.get("/")
 async def root():
