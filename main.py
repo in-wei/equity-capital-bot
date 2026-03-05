@@ -3,7 +3,7 @@ from linebot.v3.messaging import MessagingApi, Configuration, ApiClient
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 import os
 
-app = FastAPI(__name__)
+app = FastAPI()
 configuration = Configuration(access_token=os.getenv('Line_Channel_Token'))
 line_bot_api = MessagingApi(ApiClient(configuration))
 
@@ -34,10 +34,3 @@ async def callback(request: Request):
     
     # 一定要回 200 OK（就算沒做事也要回）
     return {"status": "ok"}   # 或直接 return "OK" 也可以，FastAPI 會轉 200
-
-if __name__ == "__main__":
-    # 在本機運行時，將 debug 設為 True，方便開發
-    # 在部署到正式環境時，請將 debug 設為 False
-    print("LINE Bot Server 啟動中...")
-    # 為了讓 LINE Bot 運作，你需要將這個服務暴露在網路上 (e.g. 使用 ngrok)
-    app.run(host='0.0.0.0', port=os.environ.get('PORT', 5000), debug=True)
