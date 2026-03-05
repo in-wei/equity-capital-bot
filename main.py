@@ -162,6 +162,22 @@ def send_line_push(message):
     except Exception as e:
         print("推播失敗:", e)
 
+@app.post("/callback")
+async def callback(request: Request):
+    # 這裡驗證 signature（用 line-bot-sdk 內建 middleware 更簡單）
+    body = await request.body()
+    signature = request.headers.get('X-Line-Signature')
+    # ... 驗證邏輯 ...
+    
+    events = ...  # 解析 body
+    for event in events:
+        if isinstance(event, MessageEvent) and isinstance(event.message, TextMessageContent):
+            line_bot_api.reply_message(
+                reply_token=event.reply_token,
+                messages=[{"type": "text", "text": event.message.text}]
+            )
+    return "OK"
+    
 # ======================
 # 主流程
 # ======================
