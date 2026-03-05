@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
-from linebot.v3.messaging import MessagingApi, Configuration, ApiClient
-from linebot.v3.webhooks import WebhookHandler
+from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import os
 
 # 根路徑：用來確認伺服器是否活著
