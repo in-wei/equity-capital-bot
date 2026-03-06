@@ -5,12 +5,16 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 import uvicorn
 import os
-import datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import yfinance as yf  # 新增：抓股票數據
+import ollama  # 新增：AI 分析
 
 # --- 1. 設定你的 LINE Bot 資訊 (請替換為你的實際值) ---
 # 建議使用環境變數來儲存這些敏感資訊
 YOUR_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 YOUR_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")  # Ollama 伺服器 URL
 
 if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
     raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET 環境變數")
@@ -80,15 +84,55 @@ def handle_message(event: MessageEvent):
     print("get message" + text)
     
     
-    
+    if text.startswith("分析 "):
+        stock_code = text.split(",")[1].upper() + ".TW"  # e.g., "2330" → "2330.TW"
+        CONFIG["tracked_stocks"].append(stock_code)  # 記住股票
+        analysis = analyze_stock_trend(stock_code)
+        reply_text = f"{prefix}：{analysis}"
+    else:
+        reply_text = f"{prefix}：{text}"  # 原 echo
     
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=text)  # echo 回傳相同文字
+        TextSendMessage(text=reply_text)  # echo 回傳相同文字
     )
 
 
+# 新增：股票趨勢分析函式
+def analyze_stock_trend(stock_code: str) -> str:
+    try:
+        # 抓取最近 1 個月數據（可調成每天定時跑）
+        stock = yf.Ticker(stock_code)
+        hist = stock.history(period="1mo")  # 歷史數據
+        if hist.empty:
+            return f"無法抓取 {stock_code} 數據，請檢查代碼。"
 
+        # 簡單計算趨勢 (e.g., 收盤價平均、上升/下降)
+        close_prices = hist['Close'].tolist()
+        avg_close = sum(close_prices) / len(close_prices)
+        trend = "上升" if close_prices[-1] > avg_close else "下降"
+        ma5 = sum(close_prices[-5:]) / 5 if len(close_prices) >= 5 else avg_close  # 5 日均線
+
+        # 準備提示給 Ollama
+        prompt = f"""
+        分析以下台灣股票 {stock_code} 的趨勢數據（最近1個月收盤價：{close_prices}）：
+        - 整體趨勢：{trend}
+        - 5 日均線：{ma5}
+        - 建議進出場時機（考慮下次開盤前）。
+        用自然語言總結，簡短專業。
+        """
+
+        # 用 Ollama 生成分析
+        ollama.client.host = OLLAMA_HOST  # 如果用遠端
+        response = ollama.chat(
+            model="llama3.2",  # 或你的模型
+            messages=[{"role": "user", "content": prompt}]
+        )
+        ai_analysis = response["message"]["content"]
+
+        return ai_analysis
+    except Exception as e:
+        return f"分析錯誤：{str(e)}。請檢查股票代碼或網路。"
 
 
 
