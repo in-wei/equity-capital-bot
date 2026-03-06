@@ -45,16 +45,18 @@ CONFIG = {
 }
 
 stock_trend = {}
-
+startService = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y/%m/%d %H:%M:%S")
 # --- 4. Webhook 接收點 (處理所有來自 LINE 的請求) ---
 
 # 根路徑：用來確認伺服器是否活著
 @app.get("/")
 async def root():
     print("有人訪問 / 根路徑")
-    now = datetime.now(ZoneInfo("Asia/Taipei"))
+    now = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y/%m/%d %H:%M:%S")
+    serviceAgo = now - startService
     return {
-        "time": now.strftime("%Y/%m/%d %H:%M:%S"),
+        "time": now,
+        "Ago":serviceAgo,
         "status": "online",
         "message": "✅ LINE Bot server is running!"
     }
