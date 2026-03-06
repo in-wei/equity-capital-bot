@@ -237,100 +237,124 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
     try:
         stock = yf.Ticker(stock_code)
         hist = stock.history(period=period)
-        if hist.empty or len(hist) < 30:
+        if hist.empty or len(hist) < 50:
             return f"無法抓取足夠 {stock_code} 數據（筆數 {len(hist)}），請檢查代碼或期間。"
 
-        close_prices = hist['Close'].dropna().tolist()
-        if len(close_prices) < 30:
-            return f"有效收盤價資料不足（{len(close_prices)} 筆），無法計算指標。"
+        df = hist.copy()
+        close = df['Close']
+        high = df['High']
+        low = df['Low']
+        volume = df['Volume']
 
-        avg_close = np.mean(close_prices)
-        trend = "上升" if close_prices[-1] > avg_close else "下降"
-        ma5 = np.mean(close_prices[-5:]) if len(close_prices) >= 5 else avg_close
-        ma20 = np.mean(close_prices[-20:]) if len(close_prices) >= 20 else avg_close
+        # 基本趨勢與均線
+        avg_close = close.mean()
+        trend = "上升" if close.iloc[-1] > avg_close else "下降"
+        ma5 = close.rolling(5).mean().iloc[-1]
+        ma20 = close.rolling(20).mean().iloc[-1]
 
-        # MACD
-        ema12 = hist['Close'].ewm(span=12, adjust=False).mean()
-        ema26 = hist['Close'].ewm(span=26, adjust=False).mean()
+        # MACD 完整計算與最近10日
+        ema12 = close.ewm(span=12, adjust=False).mean()
+        ema26 = close.ewm(span=26, adjust=False).mean()
         macd = ema12 - ema26
         signal = macd.ewm(span=9, adjust=False).mean()
         histogram = macd - signal
-        macd_values = macd.dropna().tail(10).tolist()
-        signal_values = signal.dropna().tail(10).tolist()
-        crossover_macd = "金叉 (買入)" if macd.iloc[-1] > signal.iloc[-1] and macd.iloc[-2] <= signal.iloc[-2] else \
-                         "死叉 (賣出)" if macd.iloc[-1] < signal.iloc[-1] and macd.iloc[-2] >= signal.iloc[-2] else "無訊號"
+        macd_recent = macd.tail(10).tolist()
+        signal_recent = signal.tail(10).tolist()
+        crossover_macd = "金叉 (買入訊號)" if macd.iloc[-1] > signal.iloc[-1] and macd.iloc[-2] <= signal.iloc[-2] else \
+                         "死叉 (賣出訊號)" if macd.iloc[-1] < signal.iloc[-1] and macd.iloc[-2] >= signal.iloc[-2] else "無明顯訊號"
 
         # KD
-        low14 = hist['Low'].rolling(window=14).min()
-        high14 = hist['High'].rolling(window=14).max()
-        k = 100 * (hist['Close'] - low14) / (high14 - low14)
-        d = k.rolling(window=3).mean()
-        k_values = k.dropna().tail(10).tolist()
-        d_values = d.dropna().tail(10).tolist()
+        k = 100 * (close - low.rolling(14).min()) / (high.rolling(14).max() - low.rolling(14).min())
+        d = k.rolling(3).mean()
+        k_recent = k.tail(10).tolist()
+        d_recent = d.tail(10).tolist()
         crossover_kd = "金叉 (買入)" if k.iloc[-1] > d.iloc[-1] and k.iloc[-2] <= d.iloc[-2] else \
                        "死叉 (賣出)" if k.iloc[-1] < d.iloc[-1] and k.iloc[-2] >= d.iloc[-2] else "無訊號"
         kd_signal = "超買 (>80)" if k.iloc[-1] > 80 else "超賣 (<20)" if k.iloc[-1] < 20 else "中性"
 
-        # 內盤外盤推估 (基於最近 1 日 volume + price 變化)
-        daily_hist = stock.history(period="1d", interval="1m")  # 抓盤內分鐘數據
+        # RSI
+        delta = close.diff()
+        up = delta.clip(lower=0).rolling(14).mean()
+        down = -delta.clip(upper=0).rolling(14).mean()
+        rs = up / down
+        rsi = 100 - (100 / (1 + rs))
+
+        # Bollinger Bands
+        bb_mid = close.rolling(20).mean()
+        bb_std = close.rolling(20).std()
+        bb_upper = bb_mid + 2 * bb_std
+        bb_lower = bb_mid - 2 * bb_std
+
+        # OBV
+        obv = (np.sign(close.diff()) * volume).cumsum().iloc[-1]
+
+        # 成交量變化率
+        vol_ma5 = volume.rolling(5).mean().iloc[-1]
+        vol_change = (volume.iloc[-1] / vol_ma5 - 1) * 100 if vol_ma5 > 0 else 0
+
+        # 盤內外盤推估
+        daily_hist = stock.history(period="1d", interval="1m")
+        inner_ratio = outer_ratio = 50
+        ib_ob_signal = "無盤內數據"
         if not daily_hist.empty:
-            volume = daily_hist['Volume'].tolist()
             deltas = np.diff(daily_hist['Close'])
-            inner_volume = sum(volume[1:][deltas < 0]) if len(deltas) > 0 else 0  # 價格跌時成交 (推估內盤)
-            outer_volume = sum(volume[1:][deltas > 0]) if len(deltas) > 0 else 0  # 價格漲時成交 (推估外盤)
-            inner_ratio = inner_volume / (inner_volume + outer_volume) * 100 if (inner_volume + outer_volume) > 0 else 0
-            outer_ratio = 100 - inner_ratio
-            ib_ob_signal = "外盤強 (買力主導)" if outer_ratio > 50 else "內盤強 (賣力主導)" if inner_ratio > 50 else "平衡"
-        else:
-            inner_ratio = outer_ratio = 50
-            ib_ob_signal = "無盤內數據"
+            vol = daily_hist['Volume'].iloc[1:]
+            inner_vol = vol[deltas < 0].sum()
+            outer_vol = vol[deltas > 0].sum()
+            total = inner_vol + outer_vol
+            if total > 0:
+                inner_ratio = inner_vol / total * 100
+                outer_ratio = 100 - inner_ratio
+                ib_ob_signal = "外盤強 (買力主導)" if outer_ratio > 50 else "內盤強 (賣力主導)" if inner_ratio > 50 else "平衡"
 
         # 線性回歸預測
-        X = np.arange(len(close_prices)).reshape(-1, 1)
-        y = np.array(close_prices)
+        X = np.arange(len(close)).reshape(-1, 1)
+        y = close.values
         model = LinearRegression().fit(X, y)
         future_days = 5
-        future_x = np.arange(len(close_prices), len(close_prices) + future_days).reshape(-1, 1)
+        future_x = np.arange(len(close), len(close) + future_days).reshape(-1, 1)
         predicted = model.predict(future_x).tolist()
-        future_trend = "預測上漲" if predicted[-1] > close_prices[-1] else "預測下跌"
+        future_trend = "預測上漲" if predicted[-1] > close.iloc[-1] else "預測下跌"
 
+        # 完整 prompt（所有原始資料都保留）
         prompt = f"""
-        分析台灣股票 {stock_code} 最近 {period} 收盤價 (最近20日：{close_prices[-20:]}）。
+        分析台灣股票 {stock_code} 最近 {period} 技術指標（收盤價最後20日：{close.tail(20).tolist()}）：
         - 整體趨勢：{trend}
-        - 5 日均線：{ma5:.2f}
-        - 20 日均線：{ma20:.2f}
-        - MACD 最近10日：{macd_values}
-        - Signal 線最近10日：{signal_values}
+        - 5日均線：{ma5:.2f} | 20日均線：{ma20:.2f}
+        - RSI(14)：{rsi.iloc[-1]:.2f}（>70超買，<30超賣）
+        - MACD 最近10日：{macd_recent}
+        - Signal 線最近10日：{signal_recent}
         - MACD 訊號：{crossover_macd}
-        - KD %K 最近10日：{k_values}
-        - KD %D 最近10日：{d_values}
+        - KD %K 最近10日：{k_recent}
+        - KD %D 最近10日：{d_recent}
         - KD 訊號：{crossover_kd} / {kd_signal}
-        - 盤內外盤推估比率：內盤 {inner_ratio:.2f}% / 外盤 {outer_ratio:.2f}%
-        - 盤內外盤訊號：{ib_ob_signal}
-        - 未來 {future_days} 日預測價格：{predicted}
+        - Bollinger Bands：中軌 {bb_mid.iloc[-1]:.2f} / 上軌 {bb_upper.iloc[-1]:.2f} / 下軌 {bb_lower.iloc[-1]:.2f}
+        - OBV 最新值：{obv:,.0f}
+        - 成交量較5日均量變化：{vol_change:.1f}%
+        - 盤內外盤推估：內盤 {inner_ratio:.2f}% / 外盤 {outer_ratio:.2f}% → {ib_ob_signal}
+        - 未來5日簡單預測價格：{predicted}
         - 未來趨勢：{future_trend}
-        - 建議進出場時機（結合 MACD、KD、內盤外盤，考慮下次開盤前）。
+
+        綜合以上所有指標，給出明確的短期與中期進出場建議。
         用自然語言總結，簡短專業。
         """
 
-        print(f"prompt 長度: {len(prompt)} 字元")
-        print(f"prompt 文字: {prompt}")
+        print(f"Ollama prompt 長度: {len(prompt)} 字元")
 
         client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY"))
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=400
+            max_tokens=500  # 加長一點，容納所有資料
         )
 
         ai_analysis = response.choices[0].message.content
-        print("分析完成")
-        return ai_analysis + "\n\n免責聲明：分析基於歷史數據，非投資建議。"
+        return ai_analysis + "\n\n免責聲明：本分析僅供參考，非投資建議。"
 
     except Exception as e:
         print(f"analyze_stock_trend 錯誤: {str(e)}")
-        return f"分析錯誤：{str(e)}。"
+        return f"分析錯誤：{str(e)}。請檢查股票代碼或網路。"
 
 
 
