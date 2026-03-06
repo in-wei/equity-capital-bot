@@ -139,7 +139,9 @@ def handle_message(event: MessageEvent):
     def background_reply():
         print("進入背景 reply 執行緒")
         try:
-            if text.startswith("/分析 "):
+            if text.lower() == "/help":
+                reply_text = "/分析 [股票代碼] [1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max]\nex:/分析 2330 1y"
+            elif text.startswith("/分析 "):
                 parts = text.split(" ")
                 if len(parts) < 2:
                     reply_text = "格式錯誤，請輸入 '分析 [股票代碼] [期間]' 如 '分析 2330 1y'"
@@ -155,8 +157,6 @@ def handle_message(event: MessageEvent):
                     else:
                         analysis = analyze_stock_trend(stock_code, period)
                         reply_text = f"{CONFIG['response_prefix']}：\n{analysis}"
-            elif text.startswitch("/幫助"): 
-                reply_text = "/分析 [股票代碼] [1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max]\nex:/分析 2330 1y"
             else:
                 reply_text = f"{CONFIG['response_prefix']}：你想對 {text} 做什麼呢? Ex: 分析 2330 1y"
 
