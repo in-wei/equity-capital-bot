@@ -144,9 +144,11 @@ def analyze_stock_trend(stock_code: str) -> str:
     try:
         stock = yf.Ticker(stock_code)
         print(f"yfinance Ticker 建立成功: {stock}")
-        end = datetime.now()
-        start = end - timedelta(days=30)
-        hist = stock.history(start=start, end=end)
+        #end = datetime.now()        #應該是抓錯時間
+        #start = end - timedelta(days=30)
+        #hist = stock.history(start=start, end=end)
+        stock = yf.Ticker(stock_code)
+        hist = stock.history(period="6mo")  # 歷史數據
         print(f"抓到歷史數據筆數: {len(hist)}")
 
         if hist.empty:
