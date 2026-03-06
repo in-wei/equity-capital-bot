@@ -59,7 +59,11 @@ async def callback(request: Request):
 @app.get("/debug-secret")
 async def debug():
     secret = os.getenv("LINE_CHANNEL_SECRET", "NOT_SET")
+    token = os.getenv("YOUR_CHANNEL_ACCESS_TOKEN", "NOT_SET")
     return {
+        "token_length": len(token),
+        "token_preview": token[:10] + "..." + token[-10:] if len(token) > 20 else token,
+        "note": "",
         "secret_length": len(secret),
         "secret_preview": secret[:10] + "..." + secret[-10:] if len(secret) > 20 else secret,
         "note": "Compare length with LINE console (通常 32 字元)"
