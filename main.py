@@ -148,9 +148,13 @@ def handle_message(event: MessageEvent):
                     period = parts[2].strip() if len(parts) > 2 else "1y"  # 預設 1y
                     print(f"解析股票代碼: {stock_code} | 期間: {period}")
                     CONFIG["tracked_stocks"].append(stock_code)  # 加回跟踪
-                    analysis = analyze_stock_trend(stock_code, period)
                     #analysis = analyze_stock_trend(stock_code)
-                    reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n\n免責聲明：本分析僅供參考，非投資建議。"
+                    #reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n\n免責聲明：本分析僅供參考，非投資建議。"
+                    if period not in ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]:
+                        reply_text = "期間格式錯誤，請用 '1y'、'5y' 等有效值。"
+                    else:
+                        analysis = analyze_stock_trend(stock_code, period)
+                        reply_text = f"{CONFIG['response_prefix']}：\n{analysis}"
             else:
                 reply_text = f"{CONFIG['response_prefix']}：你想對 {text} 做什麼呢? Ex: 分析 2330"
 
@@ -230,37 +234,45 @@ def analyze_stock_trend_old(stock_code: str) -> str:
         return f"分析錯誤：{str(e)}。請檢查網路或 API 金鑰。"
 
 def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
+    print(f"開始分析股票: {stock_code} | 期間: {period}")
     try:
         stock = yf.Ticker(stock_code)
         hist = stock.history(period=period)
-        if hist.empty:
-            return f"無法抓取 {stock_code} 數據，請檢查代碼或期間。"
+        print(f"抓到歷史數據筆數: {len(hist)}")
 
-        close_prices = hist['Close'].tolist()
+        if hist.empty or len(hist) < 30:
+            return f"無法抓取足夠 {stock_code} 數據（筆數 {len(hist)}），請檢查代碼或期間。建議使用 '1y' 或 '5y'。"
+
+        close_prices = hist['Close'].dropna().tolist()  # 去掉 NaN
+        if len(close_prices) < 30:
+            return f"有效收盤價資料不足（{len(close_prices)} 筆），無法計算指標。"
+
         avg_close = np.mean(close_prices)
         trend = "上升" if close_prices[-1] > avg_close else "下降"
         ma5 = np.mean(close_prices[-5:]) if len(close_prices) >= 5 else avg_close
         ma20 = np.mean(close_prices[-20:]) if len(close_prices) >= 20 else avg_close
 
-        # MACD 計算（原）
+        # MACD
         ema12 = hist['Close'].ewm(span=12, adjust=False).mean()
         ema26 = hist['Close'].ewm(span=26, adjust=False).mean()
         macd = ema12 - ema26
         signal = macd.ewm(span=9, adjust=False).mean()
         histogram = macd - signal
-        macd_values = macd.tolist()[-10:]
-        signal_values = signal.tolist()[-10:]
-        crossover_macd = "金叉 (買入)" if macd[-1] > signal[-1] and macd[-2] < signal[-2] else "死叉 (賣出)" if macd[-1] < signal[-1] and macd[-2] > signal[-1] else "無訊號"
+        macd_values = macd.dropna().tail(10).tolist()
+        signal_values = signal.dropna().tail(10).tolist()
+        crossover_macd = "金叉 (買入訊號)" if macd.iloc[-1] > signal.iloc[-1] and macd.iloc[-2] <= signal.iloc[-2] else \
+                         "死叉 (賣出訊號)" if macd.iloc[-1] < signal.iloc[-1] and macd.iloc[-2] >= signal.iloc[-2] else "無明顯訊號"
 
-        # KD 計算 (14 日 K, 3 日 D)
-        low = hist['Low'].rolling(window=14).min()
-        high = hist['High'].rolling(window=14).max()
-        k = 100 * (hist['Close'] - low) / (high - low)
+        # KD
+        low14 = hist['Low'].rolling(window=14).min()
+        high14 = hist['High'].rolling(window=14).max()
+        k = 100 * (hist['Close'] - low14) / (high14 - low14)
         d = k.rolling(window=3).mean()
-        k_values = k.tolist()[-10:]
-        d_values = d.tolist()[-10:]
-        crossover_kd = "金叉 (買入)" if k[-1] > d[-1] and k[-2] < d[-2] else "死叉 (賣出)" if k[-1] < d[-1] and k[-2] > d[-1] else "無訊號"
-        kd_signal = "超買 (>80)" if k[-1] > 80 else "超賣 (<20)" if k[-1] < 20 else "中性"
+        k_values = k.dropna().tail(10).tolist()
+        d_values = d.dropna().tail(10).tolist()
+        crossover_kd = "金叉 (買入)" if k.iloc[-1] > d.iloc[-1] and k.iloc[-2] <= d.iloc[-2] else \
+                       "死叉 (賣出)" if k.iloc[-1] < d.iloc[-1] and k.iloc[-2] >= d.iloc[-2] else "無訊號"
+        kd_signal = "超買 (>80)" if k.iloc[-1] > 80 else "超賣 (<20)" if k.iloc[-1] < 20 else "中性"
 
         # 線性回歸預測
         X = np.arange(len(close_prices)).reshape(-1, 1)
@@ -272,10 +284,10 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         future_trend = "預測上漲" if predicted[-1] > close_prices[-1] else "預測下跌"
 
         prompt = f"""
-        分析台灣股票 {stock_code} 最近 {period} 收盤價 (最近20日：{close_prices[-20:]}）。
+        分析台灣股票 {stock_code} 最近 {period} 收盤價 (最近20日：{close_prices[-20:]})。
         - 整體趨勢：{trend}
-        - 5 日均線：{ma5}
-        - 20 日均線：{ma20}
+        - 5 日均線：{ma5:.2f}
+        - 20 日均線：{ma20:.2f}
         - MACD 最近10日：{macd_values}
         - Signal 線最近10日：{signal_values}
         - MACD 訊號：{crossover_macd}
@@ -288,7 +300,8 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         用自然語言總結，簡短專業。
         """
 
-        # LLM 呼叫（原不變）
+        print(f"Ollama prompt 長度: {len(prompt)} 字元")
+
         client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY"))
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
@@ -296,40 +309,21 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
             temperature=0.7,
             max_tokens=400
         )
+
         ai_analysis = response.choices[0].message.content
-
-        # 生成 MACD + KD 圖片
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
-        ax1.plot(hist.index, hist['Close'], label='Close')
-        ax1.set_title(f'{stock_code} Price')
-        ax1.legend()
-
-        # MACD 圖
-        ax2.plot(hist.index, macd, label='MACD')
-        ax2.plot(hist.index, signal, label='Signal')
-        ax2.bar(hist.index, histogram, label='Histogram')
-        ax2.set_title('MACD & KD')
-        ax2.legend()
-
-        # KD 圖
-        ax3 = ax2.twinx()
-        ax3.plot(hist.index, k, 'r--', label='K')
-        ax3.plot(hist.index, d, 'b--', label='D')
-        ax3.legend(loc='upper left')
-
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png')
-        buf.seek(0)
-        plt.close(fig)
-
-        # 回傳圖片給 LINE (在 background_reply 中呼叫)
-        # return ai_analysis + 圖片 URL 或直接回 ImageSendMessage
-
+        print("Groq 分析完成")
         return ai_analysis + "\n\n免責聲明：分析基於歷史數據，非投資建議。"
 
     except Exception as e:
         print(f"analyze_stock_trend 錯誤: {str(e)}")
-        return f"分析錯誤：{str(e)}。"
+        return f"分析錯誤：{str(e)}。請檢查股票代碼、期間或 API 金鑰。"
+
+
+
+
+
+
+
 
 
 
