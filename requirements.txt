@@ -1,4 +1,4 @@
 line-bot-sdk
 fastapi
-uvicorn main:app --host 0.0.0.0 --port $PORT --log-level info
+uvicorn[standard]
 ollama==0.4.5   # 或最新版，建議不指定版本讓它自動拿最新
