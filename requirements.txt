@@ -1,4 +1,5 @@
-line-bot-sdk
-fastapi
-uvicorn[standard]
+line-bot-sdk==3.8.0 # 如果有，用最新 v3
+fastapi==0.109.2    # 穩定的 FastAPI 版本
+uvicorn==0.20.0     # 舊版 uvicorn 對 ASGI 更穩
+starlette==0.22.0   # 降級 starlette 到與 FastAPI 兼容的版本（常見解決方案）
 ollama==0.4.5   # 或最新版，建議不指定版本讓它自動拿最新
