@@ -75,6 +75,15 @@ async def debug():
         "secret_note": "Compare length with LINE console (通常 32 字元)"
     }
 
+#測試ollama連線
+@app.get("/test-ollama")
+async def test_ollama():
+    try:
+        response = ollama.list()  # 列出模型，測試連線
+        return {"status": "ok", "models": response}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 #Line Bot 使用
 @app.post("/callback")
 async def callback(request: Request):
