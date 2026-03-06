@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
 import uvicorn
 import os
 from datetime import datetime
@@ -14,6 +14,10 @@ from apscheduler.triggers.cron import CronTrigger
 from openai import OpenAI
 from sklearn.linear_model import LinearRegression  # 新加：簡單預測
 import numpy as np
+import matplotlib.pyplot as plt
+import io
+import pandas as pd  # 確保有
+import requests
 
 print("=== 程式啟動開始 ===")
 print("Python 版本檢查：import sys; print(sys.version)")
@@ -238,17 +242,27 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         ma5 = np.mean(close_prices[-5:]) if len(close_prices) >= 5 else avg_close
         ma20 = np.mean(close_prices[-20:]) if len(close_prices) >= 20 else avg_close
 
-        # 計算 MACD
+        # MACD 計算（原）
         ema12 = hist['Close'].ewm(span=12, adjust=False).mean()
         ema26 = hist['Close'].ewm(span=26, adjust=False).mean()
         macd = ema12 - ema26
         signal = macd.ewm(span=9, adjust=False).mean()
         histogram = macd - signal
-        macd_values = macd.tolist()[-10:]  # 最近10日
+        macd_values = macd.tolist()[-10:]
         signal_values = signal.tolist()[-10:]
-        crossover = "金叉 (買入訊號)" if macd[-1] > signal[-1] and macd[-2] < signal[-2] else "死叉 (賣出訊號)" if macd[-1] < signal[-1] and macd[-2] > signal[-2] else "無明顯訊號"
+        crossover_macd = "金叉 (買入)" if macd[-1] > signal[-1] and macd[-2] < signal[-2] else "死叉 (賣出)" if macd[-1] < signal[-1] and macd[-2] > signal[-1] else "無訊號"
 
-        # 簡單線性回歸預測未來 5 日
+        # KD 計算 (14 日 K, 3 日 D)
+        low = hist['Low'].rolling(window=14).min()
+        high = hist['High'].rolling(window=14).max()
+        k = 100 * (hist['Close'] - low) / (high - low)
+        d = k.rolling(window=3).mean()
+        k_values = k.tolist()[-10:]
+        d_values = d.tolist()[-10:]
+        crossover_kd = "金叉 (買入)" if k[-1] > d[-1] and k[-2] < d[-2] else "死叉 (賣出)" if k[-1] < d[-1] and k[-2] > d[-1] else "無訊號"
+        kd_signal = "超買 (>80)" if k[-1] > 80 else "超賣 (<20)" if k[-1] < 20 else "中性"
+
+        # 線性回歸預測
         X = np.arange(len(close_prices)).reshape(-1, 1)
         y = np.array(close_prices)
         model = LinearRegression().fit(X, y)
@@ -264,26 +278,53 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         - 20 日均線：{ma20}
         - MACD 最近10日：{macd_values}
         - Signal 線最近10日：{signal_values}
-        - MACD 訊號：{crossover}
+        - MACD 訊號：{crossover_macd}
+        - KD %K 最近10日：{k_values}
+        - KD %D 最近10日：{d_values}
+        - KD 訊號：{crossover_kd} / {kd_signal}
         - 未來 {future_days} 日預測價格：{predicted}
         - 未來趨勢：{future_trend}
-        - 建議進出場時機（考慮 MACD 及下次開盤前）。
+        - 建議進出場時機（結合 MACD 與 KD，考慮下次開盤前）。
         用自然語言總結，簡短專業。
         """
 
-        print(f"Ollama prompt 長度: {len(prompt)} 字元")
-
-        # 你的原 Groq 或 Ollama 呼叫不變
+        # LLM 呼叫（原不變）
         client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY"))
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",  # 你的模型
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=400  # 加長一點，容納更多分析
+            max_tokens=400
         )
-
         ai_analysis = response.choices[0].message.content
-        print("分析完成")
+
+        # 生成 MACD + KD 圖片
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+        ax1.plot(hist.index, hist['Close'], label='Close')
+        ax1.set_title(f'{stock_code} Price')
+        ax1.legend()
+
+        # MACD 圖
+        ax2.plot(hist.index, macd, label='MACD')
+        ax2.plot(hist.index, signal, label='Signal')
+        ax2.bar(hist.index, histogram, label='Histogram')
+        ax2.set_title('MACD & KD')
+        ax2.legend()
+
+        # KD 圖
+        ax3 = ax2.twinx()
+        ax3.plot(hist.index, k, 'r--', label='K')
+        ax3.plot(hist.index, d, 'b--', label='D')
+        ax3.legend(loc='upper left')
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close(fig)
+
+        # 回傳圖片給 LINE (在 background_reply 中呼叫)
+        # return ai_analysis + 圖片 URL 或直接回 ImageSendMessage
+
         return ai_analysis + "\n\n免責聲明：分析基於歷史數據，非投資建議。"
 
     except Exception as e:
@@ -292,7 +333,14 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
 
 
 
-
+def upload_image_to_imgur(buf):
+    buf.seek(0)
+    response = requests.post(
+        'https://api.imgur.com/3/image',
+        headers={'Authorization': 'Client-ID 你的Imgur Client ID'},  # 註冊 Imgur API
+        files={'image': buf.read()}
+    )
+    return response.json()['data']['link'] if response.status_code == 200 else None
 
 # 定時分析（每天晚上 18:00 跑）
 def daily_analysis():
