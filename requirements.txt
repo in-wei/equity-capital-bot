@@ -6,3 +6,10 @@ yfinance  # 抓股票數據
 apscheduler>=3.10.4
 openai
 scikit-learn
+matplotlib
+pandas
+
+
+
+
+
