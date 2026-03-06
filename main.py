@@ -234,16 +234,13 @@ def analyze_stock_trend_old(stock_code: str) -> str:
         return f"分析錯誤：{str(e)}。請檢查網路或 API 金鑰。"
 
 def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
-    print(f"開始分析股票: {stock_code} | 期間: {period}")
     try:
         stock = yf.Ticker(stock_code)
         hist = stock.history(period=period)
-        print(f"抓到歷史數據筆數: {len(hist)}")
-
         if hist.empty or len(hist) < 30:
-            return f"無法抓取足夠 {stock_code} 數據（筆數 {len(hist)}），請檢查代碼或期間。建議使用 '1y' 或 '5y'。"
+            return f"無法抓取足夠 {stock_code} 數據（筆數 {len(hist)}），請檢查代碼或期間。"
 
-        close_prices = hist['Close'].dropna().tolist()  # 去掉 NaN
+        close_prices = hist['Close'].dropna().tolist()
         if len(close_prices) < 30:
             return f"有效收盤價資料不足（{len(close_prices)} 筆），無法計算指標。"
 
@@ -260,8 +257,8 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         histogram = macd - signal
         macd_values = macd.dropna().tail(10).tolist()
         signal_values = signal.dropna().tail(10).tolist()
-        crossover_macd = "金叉 (買入訊號)" if macd.iloc[-1] > signal.iloc[-1] and macd.iloc[-2] <= signal.iloc[-2] else \
-                         "死叉 (賣出訊號)" if macd.iloc[-1] < signal.iloc[-1] and macd.iloc[-2] >= signal.iloc[-2] else "無明顯訊號"
+        crossover_macd = "金叉 (買入)" if macd.iloc[-1] > signal.iloc[-1] and macd.iloc[-2] <= signal.iloc[-2] else \
+                         "死叉 (賣出)" if macd.iloc[-1] < signal.iloc[-1] and macd.iloc[-2] >= signal.iloc[-2] else "無訊號"
 
         # KD
         low14 = hist['Low'].rolling(window=14).min()
@@ -274,6 +271,20 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
                        "死叉 (賣出)" if k.iloc[-1] < d.iloc[-1] and k.iloc[-2] >= d.iloc[-2] else "無訊號"
         kd_signal = "超買 (>80)" if k.iloc[-1] > 80 else "超賣 (<20)" if k.iloc[-1] < 20 else "中性"
 
+        # 內盤外盤推估 (基於最近 1 日 volume + price 變化)
+        daily_hist = stock.history(period="1d", interval="1m")  # 抓盤內分鐘數據
+        if not daily_hist.empty:
+            volume = daily_hist['Volume'].tolist()
+            deltas = np.diff(daily_hist['Close'])
+            inner_volume = sum(volume[1:][deltas < 0]) if len(deltas) > 0 else 0  # 價格跌時成交 (推估內盤)
+            outer_volume = sum(volume[1:][deltas > 0]) if len(deltas) > 0 else 0  # 價格漲時成交 (推估外盤)
+            inner_ratio = inner_volume / (inner_volume + outer_volume) * 100 if (inner_volume + outer_volume) > 0 else 0
+            outer_ratio = 100 - inner_ratio
+            ib_ob_signal = "外盤強 (買力主導)" if outer_ratio > 50 else "內盤強 (賣力主導)" if inner_ratio > 50 else "平衡"
+        else:
+            inner_ratio = outer_ratio = 50
+            ib_ob_signal = "無盤內數據"
+
         # 線性回歸預測
         X = np.arange(len(close_prices)).reshape(-1, 1)
         y = np.array(close_prices)
@@ -284,7 +295,7 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         future_trend = "預測上漲" if predicted[-1] > close_prices[-1] else "預測下跌"
 
         prompt = f"""
-        分析台灣股票 {stock_code} 最近 {period} 收盤價 (最近20日：{close_prices[-20:]})。
+        分析台灣股票 {stock_code} 最近 {period} 收盤價 (最近20日：{close_prices[-20:]}）。
         - 整體趨勢：{trend}
         - 5 日均線：{ma5:.2f}
         - 20 日均線：{ma20:.2f}
@@ -294,9 +305,11 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         - KD %K 最近10日：{k_values}
         - KD %D 最近10日：{d_values}
         - KD 訊號：{crossover_kd} / {kd_signal}
+        - 盤內外盤推估比率：內盤 {inner_ratio:.2f}% / 外盤 {outer_ratio:.2f}%
+        - 盤內外盤訊號：{ib_ob_signal}
         - 未來 {future_days} 日預測價格：{predicted}
         - 未來趨勢：{future_trend}
-        - 建議進出場時機（結合 MACD 與 KD，考慮下次開盤前）。
+        - 建議進出場時機（結合 MACD、KD、內盤外盤，考慮下次開盤前）。
         用自然語言總結，簡短專業。
         """
 
@@ -312,12 +325,12 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         )
 
         ai_analysis = response.choices[0].message.content
-        print("Groq 分析完成")
+        print("分析完成")
         return ai_analysis + "\n\n免責聲明：分析基於歷史數據，非投資建議。"
 
     except Exception as e:
         print(f"analyze_stock_trend 錯誤: {str(e)}")
-        return f"分析錯誤：{str(e)}。請檢查股票代碼、期間或 API 金鑰。"
+        return f"分析錯誤：{str(e)}。"
 
 
 
