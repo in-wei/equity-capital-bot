@@ -49,8 +49,8 @@ async def debug():
     return {
         "token_length": len(token),
         "token_preview": token[:10] + "..." + token[-10:] if len(token) > 20 else token,
-        "note": "",
+        "token_note": "",
         "secret_length": len(secret),
         "secret_preview": secret[:10] + "..." + secret[-10:] if len(secret) > 20 else secret,
-        "note": "Compare length with LINE console (通常 32 字元)"
+        "secret_note": "Compare length with LINE console (通常 32 字元)"
     }
