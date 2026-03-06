@@ -2,3 +2,4 @@ fastapi
 uvicorn[standard]
 line-bot-sdk
 ollama
+yfinance  # 抓股票數據
