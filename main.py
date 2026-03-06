@@ -12,6 +12,8 @@ from threading import Thread  # 背景 reply
 from apscheduler.schedulers.background import BackgroundScheduler  # 定時
 from apscheduler.triggers.cron import CronTrigger
 from openai import OpenAI
+from sklearn.linear_model import LinearRegression  # 新加：簡單預測
+import numpy as np
 
 print("=== 程式啟動開始 ===")
 print("Python 版本檢查：import sys; print(sys.version)")
@@ -134,14 +136,16 @@ def handle_message(event: MessageEvent):
         print("進入背景 reply 執行緒")
         try:
             if text.startswith("分析 "):
-                parts = text.split(" ", 1)
+                parts = text.split(" ")
                 if len(parts) < 2:
-                    reply_text = "格式錯誤，請輸入 '分析 [股票代碼]' 如 '分析 2330'"
+                    reply_text = "格式錯誤，請輸入 '分析 [股票代碼] [期間]' 如 '分析 2330 1y'"
                 else:
                     stock_code = parts[1].strip().upper() + ".TW"
-                    print(f"解析股票代碼: {stock_code}")
+                    period = parts[2].strip() if len(parts) > 2 else "1y"  # 預設 1y
+                    print(f"解析股票代碼: {stock_code} | 期間: {period}")
                     CONFIG["tracked_stocks"].append(stock_code)  # 加回跟踪
-                    analysis = analyze_stock_trend(stock_code)
+                    analysis = analyze_stock_trend(stock_code, period)
+                    #analysis = analyze_stock_trend(stock_code)
                     reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n\n免責聲明：本分析僅供參考，非投資建議。"
             else:
                 reply_text = f"{CONFIG['response_prefix']}：你想對 {text} 做什麼呢? Ex: 分析 2330"
@@ -220,6 +224,68 @@ def analyze_stock_trend(stock_code: str) -> str:
     except Exception as e:
         print(f"分析錯誤: {str(e)}")
         return f"分析錯誤：{str(e)}。請檢查網路或 API 金鑰。"
+
+def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:  # 加 period 參數，讓用戶指定
+    print(f"開始分析股票: {stock_code} | 期間: {period}")
+    try:
+        stock = yf.Ticker(stock_code)
+        hist = stock.history(period=period)  # 改成可變期間，預設 1y
+        print(f"抓到歷史數據筆數: {len(hist)}")
+
+        if hist.empty:
+            return f"無法抓取 {stock_code} 數據，請檢查代碼或期間。"
+
+        close_prices = hist['Close'].tolist()
+        avg_close = np.mean(close_prices)
+        trend = "上升" if close_prices[-1] > avg_close else "下降"
+        ma5 = np.mean(close_prices[-5:]) if len(close_prices) >= 5 else avg_close
+        ma20 = np.mean(close_prices[-20:]) if len(close_prices) >= 20 else avg_close  # 新加 MA20
+
+        # 加 RSI (相對強弱指數，簡易計算)
+        deltas = np.diff(close_prices)
+        up = deltas.clip(min=0)
+        down = -deltas.clip(max=0)
+        rs = np.mean(up[-14:]) / np.mean(down[-14:]) if len(deltas) >= 14 else 1
+        rsi = 100 - (100 / (1 + rs)) if rs > 0 else 100
+
+        # 簡單線性回歸預測未來 5 日
+        X = np.arange(len(close_prices)).reshape(-1, 1)
+        y = np.array(close_prices)
+        model = LinearRegression().fit(X, y)
+        future_days = 5
+        future_x = np.arange(len(close_prices), len(close_prices) + future_days).reshape(-1, 1)
+        predicted = model.predict(future_x).tolist()
+        future_trend = "預測上漲" if predicted[-1] > close_prices[-1] else "預測下跌"
+
+        prompt = f"""
+        分析台灣股票 {stock_code} 最近 {period} 收盤價：{close_prices[-20:]} (僅顯示最後20日)。
+        - 整體趨勢：{trend}
+        - 5 日均線：{ma5}
+        - 20 日均線：{ma20}
+        - RSI：{rsi} (若 <30 超賣, >70 超買)
+        - 未來 {future_days} 日預測價格：{predicted}
+        - 未來趨勢：{future_trend}
+        - 建議進出場時機（考慮下次開盤前）。
+        用自然語言總結，簡短專業。
+        """
+
+        print(f"Ollama prompt 長度: {len(prompt)} 字元")
+        response = ollama.chat(
+            model="llama3.2:3b",  # 假設已 pull
+            messages=[{"role": "user", "content": prompt}],
+            options={"host": OLLAMA_HOST}
+        )
+        ai_analysis = response["message"]["content"]
+        print("Ollama 分析完成")
+        return ai_analysis + "\n\n免責聲明：分析基於歷史數據，非投資建議。"
+
+    except Exception as e:
+        print(f"analyze_stock_trend 錯誤: {str(e)}")
+        return f"分析錯誤：{str(e)}。請檢查股票代碼或網路。"
+
+
+
+
 
 # 定時分析（每天晚上 18:00 跑）
 def daily_analysis():
