@@ -168,7 +168,7 @@ def handle_message(event: MessageEvent):
     Thread(target=background_reply).start()  # 背景執行
 
 # 新增：股票趨勢分析函式
-def analyze_stock_trend(stock_code: str) -> str:
+def analyze_stock_trend_old(stock_code: str) -> str:
     print(f"開始分析股票: {stock_code}")
     try:
         stock = yf.Ticker(stock_code)
@@ -225,13 +225,10 @@ def analyze_stock_trend(stock_code: str) -> str:
         print(f"分析錯誤: {str(e)}")
         return f"分析錯誤：{str(e)}。請檢查網路或 API 金鑰。"
 
-def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:  # 加 period 參數，讓用戶指定
-    print(f"開始分析股票: {stock_code} | 期間: {period}")
+def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
     try:
         stock = yf.Ticker(stock_code)
-        hist = stock.history(period=period)  # 改成可變期間，預設 1y
-        print(f"抓到歷史數據筆數: {len(hist)}")
-
+        hist = stock.history(period=period)
         if hist.empty:
             return f"無法抓取 {stock_code} 數據，請檢查代碼或期間。"
 
@@ -239,14 +236,17 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:  # 加 peri
         avg_close = np.mean(close_prices)
         trend = "上升" if close_prices[-1] > avg_close else "下降"
         ma5 = np.mean(close_prices[-5:]) if len(close_prices) >= 5 else avg_close
-        ma20 = np.mean(close_prices[-20:]) if len(close_prices) >= 20 else avg_close  # 新加 MA20
+        ma20 = np.mean(close_prices[-20:]) if len(close_prices) >= 20 else avg_close
 
-        # 加 RSI (相對強弱指數，簡易計算)
-        deltas = np.diff(close_prices)
-        up = deltas.clip(min=0)
-        down = -deltas.clip(max=0)
-        rs = np.mean(up[-14:]) / np.mean(down[-14:]) if len(deltas) >= 14 else 1
-        rsi = 100 - (100 / (1 + rs)) if rs > 0 else 100
+        # 計算 MACD
+        ema12 = hist['Close'].ewm(span=12, adjust=False).mean()
+        ema26 = hist['Close'].ewm(span=26, adjust=False).mean()
+        macd = ema12 - ema26
+        signal = macd.ewm(span=9, adjust=False).mean()
+        histogram = macd - signal
+        macd_values = macd.tolist()[-10:]  # 最近10日
+        signal_values = signal.tolist()[-10:]
+        crossover = "金叉 (買入訊號)" if macd[-1] > signal[-1] and macd[-2] < signal[-2] else "死叉 (賣出訊號)" if macd[-1] < signal[-1] and macd[-2] > signal[-2] else "無明顯訊號"
 
         # 簡單線性回歸預測未來 5 日
         X = np.arange(len(close_prices)).reshape(-1, 1)
@@ -258,30 +258,37 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:  # 加 peri
         future_trend = "預測上漲" if predicted[-1] > close_prices[-1] else "預測下跌"
 
         prompt = f"""
-        分析台灣股票 {stock_code} 最近 {period} 收盤價：{close_prices[-20:]} (僅顯示最後20日)。
+        分析台灣股票 {stock_code} 最近 {period} 收盤價 (最近20日：{close_prices[-20:]}）。
         - 整體趨勢：{trend}
         - 5 日均線：{ma5}
         - 20 日均線：{ma20}
-        - RSI：{rsi} (若 <30 超賣, >70 超買)
+        - MACD 最近10日：{macd_values}
+        - Signal 線最近10日：{signal_values}
+        - MACD 訊號：{crossover}
         - 未來 {future_days} 日預測價格：{predicted}
         - 未來趨勢：{future_trend}
-        - 建議進出場時機（考慮下次開盤前）。
+        - 建議進出場時機（考慮 MACD 及下次開盤前）。
         用自然語言總結，簡短專業。
         """
 
         print(f"Ollama prompt 長度: {len(prompt)} 字元")
-        response = ollama.chat(
-            model="llama3.2:3b",  # 假設已 pull
+
+        # 你的原 Groq 或 Ollama 呼叫不變
+        client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY"))
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",  # 你的模型
             messages=[{"role": "user", "content": prompt}],
-            options={"host": OLLAMA_HOST}
+            temperature=0.7,
+            max_tokens=400  # 加長一點，容納更多分析
         )
-        ai_analysis = response["message"]["content"]
-        print("Ollama 分析完成")
+
+        ai_analysis = response.choices[0].message.content
+        print("分析完成")
         return ai_analysis + "\n\n免責聲明：分析基於歷史數據，非投資建議。"
 
     except Exception as e:
         print(f"analyze_stock_trend 錯誤: {str(e)}")
-        return f"分析錯誤：{str(e)}。請檢查股票代碼或網路。"
+        return f"分析錯誤：{str(e)}。"
 
 
 
