@@ -39,22 +39,10 @@ async def root():
 
 @app.route("/callback", methods=['POST'])
 async def callback(request: Request):
-    try:
-        body_bytes = await request.body()
-        body = body_bytes.decode("utf-8")
-        signature = request.headers.get("X-Line-Signature")
-        
-        print(f"Webhook received - Signature: {signature[:20]}... Body preview: {body[:150]}...")
-        
-        # 暫時註解掉 handle，讓它直接過（Verify 時 LINE 發空 events，沒危險）
-        # handler.handle(body, signature)
-        
-        print("Bypassing signature for Verify test - returning 200")
-        return {"status": "ok"}  # 強制 200
-    
-    except Exception as e:
-        print(f"Error during callback: {str(e)}")
-        return {"status": "error", "detail": str(e)}, 200  # 還是回 200
+    print("POST /callback received - bypassing everything for test")
+    print("Headers:", dict(request.headers))  # log 看 LINE 送的 header
+    # 不讀 body、不 handle，直接回
+    return {"status": "ok"}  # 或 return "OK"
 
 @app.get("/debug-secret")
 async def debug():
