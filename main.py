@@ -1,10 +1,8 @@
 from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
-from linebot.v3.messaging import MessagingApi, Configuration, ApiClient
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
 import uvicorn
 import os
 import datetime
@@ -18,9 +16,11 @@ YOUR_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
 
 # --- 2. 應用程式初始化 ---
 app = FastAPI()
-configuration = Configuration(access_token=YOUR_CHANNEL_ACCESS_TOKEN)
-line_bot_api = MessagingApi(ApiClient(configuration))
+line_bot_api = LineBotApi(YOUR_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(YOUR_CHANNEL_SECRET)
+#configuration = Configuration(access_token=YOUR_CHANNEL_ACCESS_TOKEN)
+#line_bot_api = MessagingApi(ApiClient(configuration))
+#handler = WebhookHandler(YOUR_CHANNEL_SECRET)
 
 # --- 3. 模擬參數設定 (在記憶體中儲存，實際應用中應使用資料庫) ---
 # 這些參數可以在聊天室中被修改
@@ -71,13 +71,13 @@ async def callback(request: Request):
 
     return {"status": "ok"}
 
-@handler.add(MessageEvent, message=TextMessageContent)
+@handler.add(MessageEvent, message=TextMessage)
 def handle_message(event: MessageEvent):
     text = event.message.text
     print("get message" + text)
     line_bot_api.reply_message(
-        reply_token=event.reply_token,
-        messages=[TextMessageContent(text=text)]  # echo 回傳相同文字
+        event.reply_token,
+        TextSendMessage(text=text)  # echo 回傳相同文字
     )
 
 
