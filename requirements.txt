@@ -8,7 +8,7 @@ openai
 scikit-learn
 matplotlib
 pandas
-
+requests
 
 
 
