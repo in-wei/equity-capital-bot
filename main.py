@@ -19,7 +19,7 @@ print("Python 版本檢查：import sys; print(sys.version)")
 # 建議使用環境變數來儲存這些敏感資訊
 YOUR_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 YOUR_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")  # Ollama 伺服器 URL
+OLLAMA_HOST = os.getenv("OLLAMA_HOST")  # Ollama 伺服器 URL
 
 print(f"讀取環境變數 - TOKEN: {'有值' if YOUR_CHANNEL_ACCESS_TOKEN else '無'}")
 print(f"讀取環境變數 - SECRET: {'有值' if YOUR_CHANNEL_SECRET else '無'}")
