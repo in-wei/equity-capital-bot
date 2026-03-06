@@ -179,17 +179,32 @@ def analyze_stock_trend(stock_code: str) -> str:
         """
 
         print(f"Ollama prompt 長度: {len(prompt)} 字元")
-        response = ollama.chat(
-            model="llama3.2",
-            messages=[{"role": "user", "content": prompt}],
-            options={"host": OLLAMA_HOST}
+
+        #Ollama 最小容量至少1GB，改用線上AI
+        #response = ollama.chat(
+        #    model="llama3.2",
+        #    messages=[{"role": "user", "content": prompt}],
+        #    options={"host": OLLAMA_HOST}
+        #)
+        #ai_analysis = response["message"]["content"]
+
+        client = OpenAI(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=os.getenv("GROQ_API_KEY")  # 在 Railway Variables 加這個
         )
-        ai_analysis = response["message"]["content"]
+        
+        response = client.chat.completions.create(
+            model="llama3-8b-8192",  # 或 "llama3-70b-8192" 如果額度允許
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=300
+        )
+        ai_analysis = response.choices[0].message.content
         print("Ollama 分析完成")
         return ai_analysis
     except Exception as e:
         print(f"analyze_stock_trend 錯誤: {str(e)}")
-        return f"分析錯誤：{str(e)}。請檢查股票代碼或網路。"
+        return f"分析錯誤：{str(e)}。請檢查網路或 API 金鑰。"
 
 # 定時分析（每天晚上 18:00 跑）
 def daily_analysis():
