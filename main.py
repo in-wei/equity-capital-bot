@@ -85,19 +85,17 @@ def handle_message(event: MessageEvent):
     text = event.message.text
     print("get message" + text)
     
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text="準備分析...")  # echo 回傳相同文字
-    )
-
-    
     if text.startswith("分析 "):
         stock_code = text.split(" ")[1].upper() + ".TW"  # e.g., "2330" → "2330.TW"  #這個變動感覺怪怪的
         #CONFIG["tracked_stocks"].append(stock_code)  # 記住股票  #好像是多餘的東西
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=f"準備分析...{stock_code}")  # echo 回傳相同文字
+        )
         analysis = analyze_stock_trend(stock_code)
-        reply_text = f"{prefix}：{analysis}"
+        reply_text = f"{analysis}"
     else:
-        reply_text = f"{prefix}：{text}"  # 原 echo
+        reply_text = f"你想對 {text} 做什麼呢? Ex:[分析 {stock_code}]"  # 原 echo
     
     line_bot_api.reply_message(
         event.reply_token,
@@ -110,7 +108,7 @@ def analyze_stock_trend(stock_code: str) -> str:
     try:
         # 抓取最近 1 個月數據（可調成每天定時跑）
         stock = yf.Ticker(stock_code)
-        print("副程式stock -> " + stock)
+        print(f"副程式stock -> {stock}")
         hist = stock.history(period="1mo")  # 歷史數據
         if hist.empty:
             return f"無法抓取 {stock_code} 數據，請檢查代碼。"
@@ -129,6 +127,8 @@ def analyze_stock_trend(stock_code: str) -> str:
         - 建議進出場時機（考慮下次開盤前）。
         用自然語言總結，簡短專業。
         """
+        
+        print(f"請求訊息 -> {prompt}")
 
         # 用 Ollama 生成分析
         ollama.client.host = OLLAMA_HOST  # 如果用遠端
