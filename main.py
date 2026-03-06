@@ -7,12 +7,13 @@ import uvicorn
 import os
 import datetime
 
-app = FastAPI()
-
 # --- 1. 設定你的 LINE Bot 資訊 (請替換為你的實際值) ---
 # 建議使用環境變數來儲存這些敏感資訊
-YOUR_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
-YOUR_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
+YOUR_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+YOUR_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+
+if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
+    raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET 環境變數")
 
 # --- 2. 應用程式初始化 ---
 app = FastAPI()
@@ -36,10 +37,12 @@ CONFIG = {
 # 根路徑：用來確認伺服器是否活著
 @app.get("/")
 async def root():
-    loc_dt = datetime.datetime.now()
-    time_del = datetime.timedelta(hours=8)
-    new_dt = loc_dt + time_del
-    return {"time":new_dt.strftime("%Y/%m/%d %H:%M:%S"),"status": "online", "message": "✅ LINE Bot server is running!"}
+    now = datetime.now(ZoneInfo("Asia/Taipei"))
+    return {
+        "time": now.strftime("%Y/%m/%d %H:%M:%S"),
+        "status": "online",
+        "message": "✅ LINE Bot server is running!"
+    }
 
 @app.get("/debug-secret")
 async def debug():
@@ -75,6 +78,10 @@ async def callback(request: Request):
 def handle_message(event: MessageEvent):
     text = event.message.text
     print("get message" + text)
+    
+    
+    
+    
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=text)  # echo 回傳相同文字
@@ -88,3 +95,7 @@ def handle_message(event: MessageEvent):
 
 
 
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))  # Railway 會設 PORT，本地 fallback 8000
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
