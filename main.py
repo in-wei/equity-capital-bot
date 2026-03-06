@@ -34,102 +34,33 @@ async def root():
     return {"status": "online", "message": "✅ LINE Bot server is running!"}
 
 @app.route("/callback", methods=['POST'])
-def callback():
-    # 取得請求標頭中的 X-Line-Signature
-    signature = request.headers['X-Line-Signature']
+async def callback(request: Request):
+    if not handler:
+        print("Webhook error: Channel secret not set!")
+        raise HTTPException(status_code=500, detail="Channel secret not configured")
 
-    # 取得請求主體文字
-    body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
+    signature = request.headers.get("X-Line-Signature")
+    if not signature:
+        print("Missing X-Line-Signature header!")
+        raise HTTPException(status_code=400, detail="Missing signature")
 
-    # 處理 webhook 主體
     try:
+        body_bytes = await request.body()
+        body = body_bytes.decode("utf-8")
+        print(f"Webhook received - Signature: {signature[:20]}... Body preview: {body[:100]}...")  # log 看內容
+
+        # 只驗證 signature，不解析事件（Verify 階段 LINE 只發空或測試事件）
         handler.handle(body, signature)
+
+        print("Signature valid, returning 200")
+        return {"status": "success"}  # 或直接 return "OK" 也行
+
     except InvalidSignatureError:
-        print("Invalid signature. Please check your channel access token/secret.")
-        abort(400)
-
-    return 'OK'
-
-# --- 5. 訊息處理器 (處理所有文字訊息事件) ---
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    """
-    處理接收到的文字訊息，並解析指令以修改或顯示參數。
-    """
-    text = event.message.text.strip()
-    reply_text = None
-    
-    # 檢查是否為參數修改指令：/set key=value
-    # 這裡使用正則表達式來匹配並擷取 key 和 value
-    set_match = re.match(r"^/set\s+(\w+)\s*=\s*([^\s]+)", text)
-    
-    if set_match:
-        # 匹配成功，取得 key 和 value
-        key = set_match.group(1).lower()
-        value_str = set_match.group(2)
-        
-        if key in CONFIG:
-            # 嘗試轉換數值型別 (如果原本是數字)
-            try:
-                # 判斷原始值的型別並嘗試轉換
-                
-                # 【修正點 1】：處理布林型別 (True/False)
-                if isinstance(CONFIG[key], bool):
-                    lower_str = value_str.lower()
-                    if lower_str in ('true', 't', '1'):
-                        value = True
-                    elif lower_str in ('false', 'f', '0'):
-                        value = False
-                    else:
-                        # 如果輸入的不是有效的布林字串，則視為無效值
-                        raise ValueError(f"'{value_str}' 不是有效的布林值。請使用 True/False/t/f/1/0。")
-                        
-                # 【原始邏輯】：處理整數型別 (int)
-                elif isinstance(CONFIG[key], int):
-                    value = int(value_str)
-                    
-                # 【原始邏輯】：處理浮點數型別 (float)
-                elif isinstance(CONFIG[key], float):
-                    value = float(value_str)
-                    
-                # 【原始邏輯】：處理字串型別 (str) 或其他無法識別的型別
-                else:
-                    value = value_str # 保持字串型別
-                    
-            except ValueError as e:
-                # 轉換失敗 (例如輸入 'abc' 給 int 或無效的布林字串)
-                reply_text = f"❌ 錯誤：無法將 '{value_str}' 轉換為參數 '{key}' 所需的型別 ({type(CONFIG[key]).__name__})。\n詳細錯誤：{e}"
-                # 如果轉換失敗，我們直接回覆錯誤並結束處理，不更新 CONFIG
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-                return
-
-            # 更新參數
-            CONFIG[key] = value
-            
-            # 回覆確認訊息
-            reply_text = f"參數更新成功！\n參數：{key}\n新值：{value} (型別: {type(value).__name__})\n當前設定：{CONFIG}"
-            
-        else:
-            reply_text = f"錯誤：找不到參數 '{key}'。可用參數有: {', '.join(CONFIG.keys())}"
-
-    # 檢查是否為顯示設定指令：/show config
-    elif text.lower() == "/show config":
-        config_items = "\n".join([f"- {k}: {v} (型別: {type(v).__name__})" for k, v in CONFIG.items()])
-        reply_text = f"當前機器人參數設定：\n{config_items}"
-    
-    # 一般訊息回應 (使用當前的 response_prefix)
-    elif reply_text is None:
-        prefix = CONFIG.get("response_prefix", "🤖")
-        # 示範使用布林參數
-        status = "啟動中" if CONFIG.get("is_active") else "已停用"
-        reply_text = f"{prefix} 您好，我收到您的訊息了：『{text}』\n當前服務狀態: {status}\n\n您可以使用以下指令：\n- /show config 顯示所有參數\n- /set is_active=False 修改布林參數"
-
-    # 發送回應
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply_text)
-    )
+        print("Invalid signature! Check if LINE_CHANNEL_SECRET matches exactly (no extra spaces).")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    except Exception as e:
+        print(f"Unexpected error in webhook: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 if __name__ == "__main__":
 
