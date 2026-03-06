@@ -341,14 +341,59 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         用自然語言總結，簡短專業。
         """
 
-        print(f"Ollama prompt 長度: {len(prompt)} 字元")
+        prompt = f"""
+        分析台灣股票 {stock_code} 最近 {period} 技術指標（收盤價最後60日：{close.tail(60).round(2).tolist()}）：
+        - 整體趨勢：{trend}
+        - 5日均線：{ma5:.2f} | 20日均線：{ma20:.2f}
+        - RSI(14)：{rsi.iloc[-1]:.2f}（>70超買，<30超賣）
+        - MACD 最近10日：{macd.tail(10).round(4).tolist()}
+        - Signal 線最近10日：{signal.tail(10).round(4).tolist()}
+        - MACD 訊號：{crossover_macd}
+        - KD %K 最近10日：{k.tail(10).round(2).tolist()}
+        - KD %D 最近10日：{d.tail(10).round(2).tolist()}
+        - KD 訊號：{crossover_kd} / {kd_signal}
+        - Bollinger Bands：中軌 {bb_mid.iloc[-1]:.2f} / 上軌 {bb_upper.iloc[-1]:.2f} / 下軌 {bb_lower.iloc[-1]:.2f}
+        - OBV 最新值：{obv:,.0f}
+        - 成交量較5日均量變化：{vol_change:+.1f}%
+        - 盤內外盤推估：內盤 {inner_ratio:.1f}% / 外盤 {outer_ratio:.1f}% → {ib_ob_signal}
+        - 未來5日簡單預測價格：{predicted}
+        - 未來趨勢：{future_trend}
+        
+        請用以下**固定格式**簡短回覆（總長度控制在 250 字內）：
+        
+        **股票代碼**：{stock_code}（{period}）
+        
+        **整體趨勢**：上升 / 下降 / 盤整
+        
+        **進場時機**：短期 / 中期 / 無（附1句理由）
+        
+        **退場時機**：短期 / 中期 / 無（附1句理由）
+        
+        **關鍵訊號摘要**：
+        • MACD：{crossover_macd}
+        • KD：{crossover_kd} / {kd_signal}
+        • RSI：{rsi.iloc[-1]:.2f}
+        • 布林通道：價格位置
+        • 內盤外盤：{ib_ob_signal}
+        • 成交量：{vol_change:+.1f}%
+        
+        **短期預測**：{future_trend}（約 {predicted[-1]:.0f}）
+        
+        **綜合建議**：一句話總結
+        
+        免責聲明：本分析僅供參考，非投資建議。
+        """
+
+        print(f"prompt 長度: {len(prompt)} 字元")
+        print(f"prompt 文字: {prompt}")
 
         client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY"))
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=500  # 加長一點，容納所有資料
+            temperature=0.3,      # 降低隨機性，讓回覆更穩定、格式一致
+            max_tokens=300,       # 限制長度，避免太長
+            top_p=0.9             # 控制多樣性
         )
 
         ai_analysis = response.choices[0].message.content
