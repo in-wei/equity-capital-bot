@@ -39,10 +39,8 @@ async def root():
 
 @app.route("/callback", methods=['POST'])
 async def callback(request: Request):
-    print("POST /callback received - bypassing everything for test")
-    print("Headers:", dict(request.headers))  # log 看 LINE 送的 header
-    # 不讀 body、不 handle，直接回
-    return {"status": "ok"}  # 或 return "OK"
+    print("POST /callback hit - minimal version, no Request object")
+    return {"status": "ok"}  # 立刻回 200，什麼都不做
 
 @app.get("/debug-secret")
 async def debug():
