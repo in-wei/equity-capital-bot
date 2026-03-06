@@ -300,7 +300,8 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         用自然語言總結，簡短專業。
         """
 
-        print(f"Ollama prompt 長度: {len(prompt)} 字元")
+        print(f"prompt 長度: {len(prompt)} 字元")
+        print(f"prompt 文字: {prompt}")
 
         client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY"))
         response = client.chat.completions.create(
