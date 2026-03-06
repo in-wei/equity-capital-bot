@@ -2,13 +2,15 @@ from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-
 import uvicorn
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import yfinance as yf  # 新增：抓股票數據
 import ollama  # 新增：AI 分析
+from threading import Thread  # 背景 reply
+from apscheduler.schedulers.background import BackgroundScheduler  # 定時
+from apscheduler.triggers.cron import CronTrigger
 
 # --- 1. 設定你的 LINE Bot 資訊 (請替換為你的實際值) ---
 # 建議使用環境變數來儲存這些敏感資訊
@@ -30,10 +32,12 @@ handler = WebhookHandler(YOUR_CHANNEL_SECRET)
 # --- 3. 模擬參數設定 (在記憶體中儲存，實際應用中應使用資料庫) ---
 # 這些參數可以在聊天室中被修改
 CONFIG = {
-    "response_prefix": "bot", # 回應前綴
-    "mode": "normal",         # 機器人模式 (e.g., normal, debug)
-    "rate_limit": 5,          # 每分鐘訊息限制
-    "is_active": True,        # 【新增】布林參數範例
+    "response_prefix": "bot",
+    "mode": "normal",
+    "rate_limit": 5,  # 未實作，可加
+    "is_active": True,
+    "tracked_stocks": [],  # 跟進股票清單
+    "user_id": ""  # 暫存用戶 ID（生產需存 DB，每用戶不同）
 }
 
 stock_trend = {}
@@ -84,65 +88,85 @@ async def callback(request: Request):
 def handle_message(event: MessageEvent):
     text = event.message.text
     print("get message" + text)
-    
-    if text.startswith("分析 "):
-        stock_code = text.split(" ")[1].upper() + ".TW"  # e.g., "2330" → "2330.TW"  #這個變動感覺怪怪的
-        #CONFIG["tracked_stocks"].append(stock_code)  # 記住股票  #好像是多餘的東西
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=f"準備分析...{stock_code}")  # echo 回傳相同文字
-        )
-        analysis = analyze_stock_trend(stock_code)
-        reply_text = f"{analysis}"
-    else:
-        reply_text = f"你想對 {text} 做什麼呢? Ex:[分析 {stock_code}]"  # 原 echo
-    
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply_text)  # echo 回傳相同文字
-    )
 
+    CONFIG["user_id"] = event.source.user_id  # 存用戶 ID，用於 push
+
+    if not CONFIG["is_active"] or not text:
+        print("忽略無效事件")
+        return
+        
+    def background_reply():
+        try:
+            if text.startswith("分析 "):
+                parts = text.split(" ", 1)
+                if len(parts) < 2:
+                    reply_text = "請輸入 '分析 [股票代碼]' 如 '分析 2330'"
+                else:
+                    stock_code = parts[1].strip().upper() + ".TW"
+                    CONFIG["tracked_stocks"].append(stock_code)  # 加回跟踪
+                    analysis = analyze_stock_trend(stock_code)
+                    reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n\n免責聲明：本分析僅供參考，非投資建議。"
+            else:
+                reply_text = f"{CONFIG['response_prefix']}：你想對 {text} 做什麼呢? Ex: 分析 2330"
+
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text=reply_text)
+            )
+        except Exception as e:
+            print(f"Reply 失敗: {str(e)} - 嘗試 push")
+            # fallback 用 push (token 失效時)
+            line_bot_api.push_message(CONFIG["user_id"], TextSendMessage(text="分析出錯，請重試。"))
+
+    Thread(target=background_reply).start()  # 背景執行
 
 # 新增：股票趨勢分析函式
 def analyze_stock_trend(stock_code: str) -> str:
     try:
-        # 抓取最近 1 個月數據（可調成每天定時跑）
         stock = yf.Ticker(stock_code)
-        print(f"副程式stock -> {stock}")
-        hist = stock.history(period="1mo")  # 歷史數據
+        end = datetime.now()
+        start = end - timedelta(days=30)
+        hist = stock.history(start=start, end=end)
         if hist.empty:
             return f"無法抓取 {stock_code} 數據，請檢查代碼。"
 
-        # 簡單計算趨勢 (e.g., 收盤價平均、上升/下降)
         close_prices = hist['Close'].tolist()
         avg_close = sum(close_prices) / len(close_prices)
         trend = "上升" if close_prices[-1] > avg_close else "下降"
-        ma5 = sum(close_prices[-5:]) / 5 if len(close_prices) >= 5 else avg_close  # 5 日均線
+        ma5 = sum(close_prices[-5:]) / 5 if len(close_prices) >= 5 else avg_close
 
-        # 準備提示給 Ollama
         prompt = f"""
-        分析以下台灣股票 {stock_code} 的趨勢數據（最近1個月收盤價：{close_prices}）：
+        分析台灣股票 {stock_code} 最近1個月收盤價：{close_prices}。
         - 整體趨勢：{trend}
         - 5 日均線：{ma5}
         - 建議進出場時機（考慮下次開盤前）。
-        用自然語言總結，簡短專業。
+        簡短專業總結。
         """
-        
-        print(f"請求訊息 -> {prompt}")
 
-        # 用 Ollama 生成分析
-        ollama.client.host = OLLAMA_HOST  # 如果用遠端
+        print(f"請求 Ollama: {prompt}")
         response = ollama.chat(
-            model="llama3.2",  # 或你的模型
-            messages=[{"role": "user", "content": prompt}]
+            model="llama3.2",
+            messages=[{"role": "user", "content": prompt}],
+            options={"host": OLLAMA_HOST}
         )
-        ai_analysis = response["message"]["content"]
-
-        return ai_analysis
+        return response["message"]["content"]
     except Exception as e:
-        return f"分析錯誤：{str(e)}。請檢查股票代碼或網路。"
+        return f"分析錯誤：{str(e)}"
 
+# 定時分析（每天晚上 18:00 跑）
+def daily_analysis():
+    if not CONFIG["tracked_stocks"]:
+        return
 
+    for code in set(CONFIG["tracked_stocks"]):  # 去重
+        analysis = analyze_stock_trend(code)
+        msg = f"每日跟進 {code}：\n{analysis}\n\n免責聲明：僅供參考。"
+        if CONFIG["user_id"]:  # push 給最後用戶（生產需存多用戶）
+            line_bot_api.push_message(CONFIG["user_id"], TextSendMessage(text=msg))
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(daily_analysis, CronTrigger(hour=18, minute=0, timezone='Asia/Taipei'))
+scheduler.start()
 
 
 
