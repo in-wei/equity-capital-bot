@@ -41,6 +41,20 @@ async def root():
     new_dt = loc_dt + time_del
     return {"time":new_dt.strftime("%Y/%m/%d %H:%M:%S"),"status": "online", "message": "✅ LINE Bot server is running!"}
 
+@app.get("/debug-secret")
+async def debug():
+    secret = os.getenv("LINE_CHANNEL_SECRET")
+    token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+    return {
+        "token_length": len(token),
+        "token_preview": token[:10] + "..." + token[-10:] if len(token) > 20 else token,
+        "token_note": "",
+        "secret_length": len(secret),
+        "secret_preview": secret[:10] + "..." + secret[-10:] if len(secret) > 20 else secret,
+        "secret_note": "Compare length with LINE console (通常 32 字元)"
+    }
+
+#Line Bot 使用
 @app.post("/callback")
 async def callback(request: Request):
     signature = request.headers.get("X-Line-Signature")
@@ -57,22 +71,10 @@ async def callback(request: Request):
 
     return {"status": "ok"}
 
-@app.get("/debug-secret")
-async def debug():
-    secret = os.getenv("LINE_CHANNEL_SECRET")
-    token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-    return {
-        "token_length": len(token),
-        "token_preview": token[:10] + "..." + token[-10:] if len(token) > 20 else token,
-        "token_note": "",
-        "secret_length": len(secret),
-        "secret_preview": secret[:10] + "..." + secret[-10:] if len(secret) > 20 else secret,
-        "secret_note": "Compare length with LINE console (通常 32 字元)"
-    }
-
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event: MessageEvent):
     text = event.message.text
+    print("get message" + text)
     line_bot_api.reply_message(
         reply_token=event.reply_token,
         messages=[TextMessageContent(text=text)]  # echo 回傳相同文字
