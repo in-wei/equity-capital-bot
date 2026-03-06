@@ -155,7 +155,7 @@ def handle_message(event: MessageEvent):
                     else:
                         analysis = analyze_stock_trend(stock_code, period)
                         reply_text = f"{CONFIG['response_prefix']}：\n{analysis}"
-            elif text.startswitch("/幫助"):
+            elif text.startswitch("/幫助"): 
                 reply_text = "/分析 [股票代碼] [1d|5d|1mo|3mo|6mo|1y|2y|5y|10y|ytd|max]\nex:/分析 2330 1y"
             else:
                 reply_text = f"{CONFIG['response_prefix']}：你想對 {text} 做什麼呢? Ex: 分析 2330 1y"
