@@ -11,6 +11,7 @@ import ollama  # 新增：AI 分析
 from threading import Thread  # 背景 reply
 from apscheduler.schedulers.background import BackgroundScheduler  # 定時
 from apscheduler.triggers.cron import CronTrigger
+from openai import OpenAI
 
 print("=== 程式啟動開始 ===")
 print("Python 版本檢查：import sys; print(sys.version)")
