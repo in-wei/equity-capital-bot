@@ -85,6 +85,19 @@ async def test_ollama():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+#測試Grod連線
+@app.get("/test-groq")
+async def test_groq():
+    try:
+        client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY"))
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": "你好"}]
+        )
+        return {"status": "ok", "reply": response.choices[0].message.content}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 #Line Bot 使用
 @app.post("/callback")
 async def callback(request: Request):
@@ -171,6 +184,11 @@ def analyze_stock_trend(stock_code: str) -> str:
         trend = "上升" if close_prices[-1] > avg_close else "下降"
         ma5 = sum(close_prices[-5:]) / 5 if len(close_prices) >= 5 else avg_close
 
+        client = OpenAI(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=os.getenv("GROQ_API_KEY")  # 在 Railway Variables 加這個
+        )
+        
         prompt = f"""
         分析台灣股票 {stock_code} 最近1個月收盤價：{close_prices}。
         - 整體趨勢：{trend}
@@ -178,8 +196,8 @@ def analyze_stock_trend(stock_code: str) -> str:
         - 建議進出場時機（考慮下次開盤前）。
         簡短專業總結。
         """
-
-        print(f"Ollama prompt 長度: {len(prompt)} 字元")
+        
+        print(f"prompt 長度: {len(prompt)} 字元")
 
         #Ollama 最小容量至少1GB，改用線上AI
         #response = ollama.chat(
@@ -189,22 +207,18 @@ def analyze_stock_trend(stock_code: str) -> str:
         #)
         #ai_analysis = response["message"]["content"]
 
-        client = OpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=os.getenv("GROQ_API_KEY")  # 在 Railway Variables 加這個
-        )
-        
         response = client.chat.completions.create(
-            model="llama3-8b-8192",  # 或 "llama3-70b-8192" 如果額度允許
+            model="llama-3.1-8b-instant", 
+            # model="llama-3.1-70b-versatile",  # 如果想用更強的（額度夠再換）
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
             max_tokens=300
         )
         ai_analysis = response.choices[0].message.content
-        print("Ollama 分析完成")
+        print("分析完成")
         return ai_analysis
     except Exception as e:
-        print(f"analyze_stock_trend 錯誤: {str(e)}")
+        print(f"分析錯誤: {str(e)}")
         return f"分析錯誤：{str(e)}。請檢查網路或 API 金鑰。"
 
 # 定時分析（每天晚上 18:00 跑）
