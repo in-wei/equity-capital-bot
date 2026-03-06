@@ -32,7 +32,7 @@ CONFIG = {
 # 根路徑：用來確認伺服器是否活著
 @app.get("/")
 async def root():
-    return {"time":datetime.datetime.now(),"status": "online", "message": "✅ LINE Bot server is running!"}
+    return {"time":datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"),"status": "online", "message": "✅ LINE Bot server is running!"}
 
 @app.route("/callback", methods=['POST'])
 async def callback(request: Request):
