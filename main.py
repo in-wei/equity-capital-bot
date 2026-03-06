@@ -38,7 +38,7 @@ async def root():
     return {"time":new_dt.strftime("%Y/%m/%d %H:%M:%S"),"status": "online", "message": "✅ LINE Bot server is running!"}
 
 @app.route("/callback", methods=['POST'])
-async def callback(request: Request):
+async def callback():
     print("POST /callback hit - minimal version, no Request object")
     return {"status": "ok"}  # 立刻回 200，什麼都不做
 
