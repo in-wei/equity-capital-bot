@@ -10,8 +10,8 @@ app = FastAPI()
 
 # --- 1. 設定你的 LINE Bot 資訊 (請替換為你的實際值) ---
 # 建議使用環境變數來儲存這些敏感資訊
-YOUR_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "YOUR_CHANNEL_ACCESS_TOKEN_HERE")
-YOUR_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "YOUR_CHANNEL_SECRET_HERE")
+YOUR_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
+YOUR_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
 
 # --- 2. 應用程式初始化 ---
 app = FastAPI()
@@ -58,8 +58,8 @@ async def callback(request: Request):
 
 @app.get("/debug-secret")
 async def debug():
-    secret = os.getenv("LINE_CHANNEL_SECRET", "NOT_SET")
-    token = os.getenv("YOUR_CHANNEL_ACCESS_TOKEN", "NOT_SET")
+    secret = os.getenv("LINE_CHANNEL_SECRET")
+    token = os.getenv("YOUR_CHANNEL_ACCESS_TOKEN")
     return {
         "token_length": len(token),
         "token_preview": token[:10] + "..." + token[-10:] if len(token) > 20 else token,
