@@ -324,13 +324,17 @@ def upload_image_to_imgur(buf):
 # 定時分析（每天晚上 18:00 跑）
 def daily_analysis():
     print("=== 定時分析開始 ===")
-    for code in CONFIG["tracked_stocks"]:
-        try:
-            analysis = analyze_stock_trend(code, "1y")
-            if CONFIG["user_id"]:
-                line_bot_api.push_message(CONFIG["user_id"], TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
-        except Exception as e:
-            print(f"定時分析 {code} 失敗: {e}")
+    if datetime.now(ZoneInfo("Asia/Taipei")).weekday() in (5, 6):
+        print("六、日不傳送")
+    else:
+        for code in CONFIG["tracked_stocks"]:
+            try:
+                analysis = analyze_stock_trend(code, "1y")
+                if CONFIG["user_id"]:
+                    print(f"傳送 {code} 分析至 {CONFIG["user_id"]} |內容:{analysis}")
+                    line_bot_api.push_message(CONFIG["user_id"], TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
+            except Exception as e:
+                print(f"定時分析 {code} 失敗: {e}")
     print("=== 定時分析結束 ===")
 
 
