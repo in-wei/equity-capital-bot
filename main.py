@@ -55,7 +55,7 @@ CONFIG = {
     "mode": "normal",
     "rate_limit": 5,           # 未來可實作限流
     "is_active": True,
-    "tracked_stocks": [],
+    "tracked_stocks": set(),
     "user_id": ""              # 暫存最後一位使用者 ID
 }
 
@@ -147,7 +147,7 @@ def handle_message(event: MessageEvent):
                     if period not in ["1d","5d","1mo","3mo","6mo","1y","2y","5y","10y","ytd","max"]:
                         reply_text = "期間格式錯誤，請用有效值（如 1y、5y、max）"
                     else:
-                        CONFIG["tracked_stocks"].append(code)
+                        CONFIG["tracked_stocks"].add(code)
                         analysis = analyze_stock_trend(code, period)
                         reply_text = f"{CONFIG['response_prefix']}：\n{analysis}"
             else:
@@ -324,6 +324,9 @@ def upload_image_to_imgur(buf):
 # 定時分析（每天晚上 18:00 跑）
 def daily_analysis():
     print("=== 定時分析開始 ===")
+    CONFIG["tracked_stocks"] = sorted(set(CONFIG["tracked_stocks"]))
+    print(f"目前追蹤股票（去重後）：{CONFIG['tracked_stocks']}")
+    
     if datetime.now(ZoneInfo("Asia/Taipei")).weekday() in (5, 6):
         print("六、日不傳送")
     else:
