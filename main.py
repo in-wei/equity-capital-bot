@@ -327,7 +327,7 @@ def daily_analysis():
     CONFIG["tracked_stocks"] = sorted(set(CONFIG["tracked_stocks"]))
     print(f"目前追蹤股票（去重後）：{CONFIG['tracked_stocks']}")
     
-    if datetime.now(ZoneInfo("Asia/Taipei")).weekday() in (5, 6):
+    if not datetime.now(ZoneInfo("Asia/Taipei")).weekday() in (5, 6):
         print("六、日不傳送")
     else:
         for code in CONFIG["tracked_stocks"]:
