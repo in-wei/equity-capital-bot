@@ -59,6 +59,24 @@ CONFIG = {
     "user_id": ""              # 暫存最後一位使用者 ID
 }
 
+# 自動嘗試的後綴順序（可快速新增/刪除/調整順序）
+SUFFIX_PRIORITY = [
+    "",          # 美股、歐股等無後綴優先
+    ".TW",       # 台股主板
+    ".TWO",      # 台股上櫃
+    ".HK",       # 港股
+    ".T",        # 日本東證
+    ".NS",       # 印度 NSE
+    ".BO",       # 印度 BSE
+    ".SS",       # 中國上證（舊寫法，有時用 .SH）
+    ".SZ",       # 中國深證
+    ".AX",       # 澳洲
+    ".TO",       # 加拿大
+    ".L",        # 英國
+    ".F",        # 德國
+    # 新增其他市場就在這裡加一行，例如 ".SA" 巴西
+]
+
 start_service = datetime.now(ZoneInfo("Asia/Taipei"))
 
 # ────────────────────────────────────────────────
@@ -140,16 +158,43 @@ def handle_message(event: MessageEvent):
             elif text.startswith("/分析 "):
                 parts = text.split(" ")
                 if len(parts) < 2:
-                    reply_text = "格式錯誤：/分析 [股票代碼] [期間]"
+                    reply_text = f"格式錯誤：/分析 [股票代碼] [期間] \n試試：/分析 {text} 1y"
                 else:
-                    code = parts[1].strip().upper()
+                    raw_code = parts[1].strip().upper()
                     period = parts[2].strip() if len(parts) > 2 else "1y"
-                    if period not in ["1d","5d","1mo","3mo","6mo","1y","2y","5y","10y","ytd","max"]:
-                        reply_text = "期間格式錯誤，請用有效值（如 1y、5y、max）"
+            
+                    # 自動嘗試後綴
+                    stock_code = None
+                    used_suffix = "未知"
+            
+                    # 如果使用者已經給了後綴，直接用
+                    if '.' in raw_code:
+                        stock_code = raw_code
+                        used_suffix = raw_code.split('.')[-1]
                     else:
-                        CONFIG["tracked_stocks"].add(code)
-                        analysis = analyze_stock_trend(code, period)
-                        reply_text = f"{CONFIG['response_prefix']}：\n{analysis}"
+                        # 依序嘗試
+                        for suffix in SUFFIX_PRIORITY:
+                            test_code = raw_code + suffix
+                            try:
+                                stock = yf.Ticker(test_code)
+                                hist = stock.history(period="5d")  # 先用短期間測試是否有效
+                                if not hist.empty:
+                                    stock_code = test_code
+                                    used_suffix = suffix if suffix else "美股/無後綴"
+                                    print(f"成功匹配：{stock_code} ({used_suffix})")
+                                    break
+                            except Exception:
+                                continue  # 失敗就試下一個
+            
+                    if stock_code is None:
+                        reply_text = f"無法辨識 {raw_code}，請試試加後綴：\n- 台股：2330.TW 或 8081.TWO\n- 美股：AAPL\n- 港股：9988.HK\n- 日股：7203.T"
+                    else:
+                        # 去重加入
+                        if stock_code not in CONFIG["tracked_stocks"]:
+                            CONFIG["tracked_stocks"].append(stock_code)
+                        
+                        analysis = analyze_stock_trend(stock_code, period)
+                        reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n（使用代碼：{stock_code}）"
             else:
                 reply_text = f"{CONFIG['response_prefix']}：你想對 {text} 做什麼呢？\n試試：/分析 {text} 1y"
 
@@ -175,12 +220,12 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         stock = yf.Ticker(stock_code)
         hist = stock.history(period=period)
         if hist.empty or len(hist) < 50:
-            #return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
-            print f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
-            stock = yf.Ticker(stock_code + ".TWO")
-            hist = stock.history(period=period)
-            if hist.empty or len(hist) < 50:
-                return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
+            return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
+            #print f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
+            #stock = yf.Ticker(stock_code + ".TWO")
+            #hist = stock.history(period=period)
+            #if hist.empty or len(hist) < 50:
+            #    return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
 
         df = hist.copy()
         close = df['Close']
