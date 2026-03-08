@@ -152,7 +152,7 @@ def handle_message(event: MessageEvent):
 
     def background_reply():
         try:
-            if text.startswith("/help", "/幫助"):
+            if text.lower() == "/help":
                 reply_text = (
                     "指令列表：\n"
                     "/分析 [代碼] [期間] → 分析股票（支援全球）\n"
@@ -201,7 +201,7 @@ def handle_message(event: MessageEvent):
                 else:
                     reply_text = "你尚未設定任何追蹤，無需關閉"
     
-            elif text.startswith("/list","/清單"):
+            elif text.lower() == "/list":
                 user_id = event.source.user_id
                 if user_id not in USER_SETTINGS or not USER_SETTINGS[user_id]["tracked_stocks"]:
                     reply_text = "你目前沒有追蹤任何股票"
