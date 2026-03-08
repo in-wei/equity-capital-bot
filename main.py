@@ -52,6 +52,8 @@ CONFIG = {
     "user_id": ""             # 暫存最後使用者 ID（生產建議用 DB）
 }
 
+USER_SETTINGS = {}
+
 # ────────────────────────────────────────────────
 # 環境變數載入與檢查
 # ────────────────────────────────────────────────
@@ -152,13 +154,62 @@ def handle_message(event: MessageEvent):
         try:
             if text.lower() == "/help":
                 reply_text = (
-                    "使用方式：/分析 [股票代碼] [期間]\n"
-                    "範例：\n"
-                    "  /分析 2330      → 台股台積電（預設1y）\n"
-                    "  /分析 AAPL     → 美股蘋果\n"
-                    "  /分析 9988.HK  → 港股騰訊\n"
-                    "期間：1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, max"
+                    "指令列表：\n"
+                    "/分析 [代碼] [期間] → 分析股票（支援全球）\n"
+                    "/add [代碼] → 新增追蹤股票\n"
+                    "/remove [代碼] 或 /del [代碼] → 刪除追蹤\n"
+                    "/push on → 開啟每日推播\n"
+                    "/push off → 關閉推播\n"
+                    "/list → 查看我的追蹤股票與推播狀態\n"
+                    "/分析 或 /add 時，系統會自動嘗試常見後綴（如台股 .TW、美股無後綴）"
                 )
+            elif text.startswith("/add "):
+                raw_code = text.split(" ", 1)[1].strip().upper()
+                stock_code, suffix_info = resolve_stock_code(raw_code)
+            
+                if stock_code is None:
+                    reply_text = suffix_info  # 錯誤訊息
+                else:
+                    user_id = event.source.user_id
+                    if user_id not in USER_SETTINGS:
+                        USER_SETTINGS[user_id] = {"tracked_stocks": set(), "push_enabled": True}
+                    USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
+                    reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前追蹤 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔"
+    
+            elif text.startswith(("/remove ", "/del ")):
+                cmd, code = text.split(" ", 1)
+                code = code.strip().upper()
+                user_id = event.source.user_id
+                if user_id in USER_SETTINGS and code in USER_SETTINGS[user_id]["tracked_stocks"]:
+                    USER_SETTINGS[user_id]["tracked_stocks"].remove(code)
+                    reply_text = f"已移除追蹤：{code}（剩餘 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔）"
+                else:
+                    reply_text = f"未找到 {code} 在你的追蹤清單中"
+    
+            elif text.lower() == "/push on":
+                user_id = event.source.user_id
+                if user_id not in USER_SETTINGS:
+                    USER_SETTINGS[user_id] = {"tracked_stocks": set(), "push_enabled": True}
+                USER_SETTINGS[user_id]["push_enabled"] = True
+                reply_text = "已開啟每日推播（若有追蹤股票，晚上18:00會收到報告）"
+    
+            elif text.lower() == "/push off":
+                user_id = event.source.user_id
+                if user_id in USER_SETTINGS:
+                    USER_SETTINGS[user_id]["push_enabled"] = False
+                    reply_text = "已關閉每日推播"
+                else:
+                    reply_text = "你尚未設定任何追蹤，無需關閉"
+    
+            elif text.lower() == "/list":
+                user_id = event.source.user_id
+                if user_id not in USER_SETTINGS or not USER_SETTINGS[user_id]["tracked_stocks"]:
+                    reply_text = "你目前沒有追蹤任何股票"
+                else:
+                    stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
+                    push_status = "開啟" if USER_SETTINGS[user_id]["push_enabled"] else "關閉"
+                    reply_text = f"你的追蹤股票（共 {len(stocks)} 檔）：\n" + "\n".join(stocks) + f"\n\n每日推播：{push_status}"
+
             elif text.startswith("/分析 "):
                 parts = text.split(" ", 2)
                 if len(parts) < 2:
@@ -167,37 +218,11 @@ def handle_message(event: MessageEvent):
                     raw_code = parts[1].strip().upper()
                     period = parts[2].strip() if len(parts) > 2 else "1y"
 
-                    # 自動嘗試後綴
-                    stock_code = None
-                    used_suffix = "未知"
-
-                    if '.' in raw_code:
-                        stock_code = raw_code
-                        used_suffix = raw_code.split('.')[-1]
-                    else:
-                        for suffix in SUFFIX_PRIORITY:
-                            test_code = raw_code + suffix
-                            try:
-                                stock = yf.Ticker(test_code)
-                                hist_test = stock.history(period="1mo")  # 用 1mo 測試較穩
-                                if not hist_test.empty:
-                                    stock_code = test_code
-                                    used_suffix = suffix if suffix else "美股/無後綴"
-                                    print(f"成功匹配：{stock_code} ({used_suffix})")
-                                    break
-                            except Exception:
-                                continue
-
+                    stock_code, suffix_info = resolve_stock_code(raw_code)
+                    
                     if stock_code is None:
-                        reply_text = (
-                            f"無法辨識 {raw_code}，請試試加後綴：\n"
-                            "- 台股：2330 或 2330.TW / 8081.TWO\n"
-                            "- 美股：AAPL\n"
-                            "- 港股：9988 或 9988.HK\n"
-                            "- 日股：7203 或 7203.T"
-                        )
+                        reply_text = suffix_info  # 錯誤訊息
                     else:
-                        CONFIG["tracked_stocks"].add(stock_code)
                         analysis = analyze_stock_trend(stock_code, period)
                         reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n（使用代碼：{stock_code}）"
             else:
@@ -355,6 +380,39 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         print(f"analyze_stock_trend 錯誤: {str(e)}")
         return f"分析錯誤：{str(e)}。請檢查股票代碼或網路。"
 
+def resolve_stock_code(raw_code: str) -> tuple[str | None, str]:
+    """
+    自動解析並補完整股票代碼，返回 (最終代碼, 使用的後綴說明)
+    如果無法匹配，返回 (None, 錯誤訊息)
+    """
+    raw_code = raw_code.strip().upper()
+
+    # 如果已經帶後綴，直接回傳
+    if '.' in raw_code:
+        suffix = raw_code.split('.')[-1]
+        return raw_code, f"已指定後綴 .{suffix}"
+
+    # 依序嘗試後綴
+    for suffix in SUFFIX_PRIORITY:
+        test_code = raw_code + suffix
+        try:
+            stock = yf.Ticker(test_code)
+            # 用較長期間測試，避免短資料空
+            hist_test = stock.history(period="1mo")
+            if not hist_test.empty:
+                return test_code, suffix if suffix else "美股/無後綴"
+        except Exception:
+            continue
+
+    # 全部失敗
+    return None, (
+        f"無法辨識 {raw_code}，建議嘗試：\n"
+        "- 台股：2330 或 2330.TW / 8081.TWO\n"
+        "- 美股：AAPL\n"
+        "- 港股：9988 或 9988.HK\n"
+        "- 日股：7203 或 7203.T"
+    )
+
 # ────────────────────────────────────────────────
 # 工具函式（圖片上傳等）
 # ────────────────────────────────────────────────
@@ -372,21 +430,22 @@ def upload_image_to_imgur(buf):
 # ────────────────────────────────────────────────
 def daily_analysis():
     print("=== 定時分析開始 ===")
-    CONFIG["tracked_stocks"] = sorted(CONFIG["tracked_stocks"])  # set 已去重，再排序
-    print(f"目前追蹤股票（去重後）：{CONFIG['tracked_stocks']}")
-
     # 週六日不推
     if datetime.now(ZoneInfo("Asia/Taipei")).weekday() in (5, 6):
         print("六、日不傳送")
-    else:
-        for code in CONFIG["tracked_stocks"]:
+        return
+    
+    for user_id, settings in USER_SETTINGS.items():
+        if not settings["push_enabled"] or not settings["tracked_stocks"]:
+            continue
+
+        print(f"推播給 {user_id}，追蹤 {len(settings['tracked_stocks'])} 檔")
+        for code in sorted(settings["tracked_stocks"]):
             try:
                 analysis = analyze_stock_trend(code, "1y")
-                if CONFIG["user_id"]:
-                    print(f"傳送 {code} 分析至 {CONFIG['user_id']}")
-                    line_bot_api.push_message(CONFIG["user_id"], TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
+                line_bot_api.push_message(user_id, TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
             except Exception as e:
-                print(f"定時分析 {code} 失敗: {e}")
+                print(f"推播 {code} 到 {user_id} 失敗: {e}")
     print("=== 定時分析結束 ===")
 
 scheduler = BackgroundScheduler()
