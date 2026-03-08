@@ -24,7 +24,36 @@ from apscheduler.triggers.cron import CronTrigger
 import uvicorn
 
 # ────────────────────────────────────────────────
-# 環境變數與初始化
+# 全域設定與後綴優先順序（這裡統一管理，易修改）
+# ────────────────────────────────────────────────
+SUFFIX_PRIORITY = [
+    "",       # 美股、歐股等無後綴優先
+    ".TW",    # 台股主板
+    ".TWO",   # 台股上櫃
+    ".HK",    # 港股
+    ".T",     # 日本東證
+    ".NS",    # 印度 NSE
+    ".BO",    # 印度 BSE
+    ".SS",    # 中國上證（舊寫法，有時用 .SH）
+    ".SZ",    # 中國深證
+    ".AX",    # 澳洲
+    ".TO",    # 加拿大
+    ".L",     # 英國
+    ".F",     # 德國
+    # 新增市場就在這裡加一行，例如 ".SA" 巴西
+]
+
+CONFIG = {
+    "response_prefix": "bot",
+    "mode": "normal",
+    "rate_limit": 5,
+    "is_active": True,
+    "tracked_stocks": set(),  # 使用 set 自動去重
+    "user_id": ""             # 暫存最後使用者 ID（生產建議用 DB）
+}
+
+# ────────────────────────────────────────────────
+# 環境變數載入與檢查
 # ────────────────────────────────────────────────
 print("=== 程式啟動開始 ===")
 print(f"Python 版本: {sys.version}")
@@ -32,13 +61,10 @@ print(f"Python 版本: {sys.version}")
 YOUR_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 YOUR_CHANNEL_SECRET      = os.getenv("LINE_CHANNEL_SECRET")
 GROQ_API_KEY             = os.getenv("GROQ_API_KEY")
-OLLAMA_HOST              = os.getenv("OLLAMA_HOST")  # 可選，未來切回 Ollama 時使用
+OLLAMA_HOST              = os.getenv("OLLAMA_HOST")  # 可選
 
 if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
     raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET")
-
-if not GROQ_API_KEY:
-    print("警告：未設定 GROQ_API_KEY，將無法使用 Groq 分析")
 
 print(f"TOKEN: {'有值' if YOUR_CHANNEL_ACCESS_TOKEN else '無'}")
 print(f"SECRET: {'有值' if YOUR_CHANNEL_SECRET else '無'}")
@@ -48,34 +74,6 @@ print(f"OLLAMA_HOST: {OLLAMA_HOST or '未設定'}")
 app = FastAPI()
 line_bot_api = LineBotApi(YOUR_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(YOUR_CHANNEL_SECRET)
-
-# 全域設定
-CONFIG = {
-    "response_prefix": "bot",
-    "mode": "normal",
-    "rate_limit": 5,           # 未來可實作限流
-    "is_active": True,
-    "tracked_stocks": set(),
-    "user_id": ""              # 暫存最後一位使用者 ID
-}
-
-# 自動嘗試的後綴順序（可快速新增/刪除/調整順序）
-SUFFIX_PRIORITY = [
-    "",          # 美股、歐股等無後綴優先
-    ".TW",       # 台股主板
-    ".TWO",      # 台股上櫃
-    ".HK",       # 港股
-    ".T",        # 日本東證
-    ".NS",       # 印度 NSE
-    ".BO",       # 印度 BSE
-    ".SS",       # 中國上證（舊寫法，有時用 .SH）
-    ".SZ",       # 中國深證
-    ".AX",       # 澳洲
-    ".TO",       # 加拿大
-    ".L",        # 英國
-    ".F",        # 德國
-    # 新增其他市場就在這裡加一行，例如 ".SA" 巴西
-]
 
 start_service = datetime.now(ZoneInfo("Asia/Taipei"))
 
@@ -122,7 +120,6 @@ async def test_groq():
 # ────────────────────────────────────────────────
 @app.post("/callback")
 async def callback(request: Request):
-    print("收到 webhook 請求")
     signature = request.headers.get("X-Line-Signature")
     body_bytes = await request.body()
     body = body_bytes.decode("utf-8")
@@ -154,50 +151,52 @@ def handle_message(event: MessageEvent):
     def background_reply():
         try:
             if text.lower() == "/help":
-                reply_text = "/分析 [股票代碼] [期間]\n期間範例：1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, max"
+                reply_text = (
+                    "使用方式：/分析 [股票代碼] [期間]\n"
+                    "範例：\n"
+                    "  /分析 2330      → 台股台積電（預設1y）\n"
+                    "  /分析 AAPL     → 美股蘋果\n"
+                    "  /分析 9988.HK  → 港股騰訊\n"
+                    "期間：1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, max"
+                )
             elif text.startswith("/分析 "):
-                parts = text.split(" ")
+                parts = text.split(" ", 2)
                 if len(parts) < 2:
-                    reply_text = f"格式錯誤：/分析 [股票代碼] [期間] \n試試：/分析 {text} 1y"
+                    reply_text = "格式錯誤：/分析 [股票代碼] [期間]"
                 else:
                     raw_code = parts[1].strip().upper()
                     period = parts[2].strip() if len(parts) > 2 else "1y"
-            
+
                     # 自動嘗試後綴
                     stock_code = None
                     used_suffix = "未知"
-            
-                    # 如果使用者已經給了後綴，直接用
+
                     if '.' in raw_code:
-                        print(f"有後綴，直接使用")
                         stock_code = raw_code
                         used_suffix = raw_code.split('.')[-1]
                     else:
-                        print(f"無後綴，嘗試加入後綴")
-                        # 依序嘗試
                         for suffix in SUFFIX_PRIORITY:
                             test_code = raw_code + suffix
-                            print(f"目前嘗試{test_code}")
                             try:
                                 stock = yf.Ticker(test_code)
-                                hist = stock.history(period="5d")  # 先用短期間測試是否有效
-                                if not hist.empty:
+                                hist_test = stock.history(period="1mo")  # 用 1mo 測試較穩
+                                if not hist_test.empty:
                                     stock_code = test_code
                                     used_suffix = suffix if suffix else "美股/無後綴"
                                     print(f"成功匹配：{stock_code} ({used_suffix})")
                                     break
                             except Exception:
-                                continue  # 失敗就試下一個
-                        print(f"嘗試結束")
-            
+                                continue
+
                     if stock_code is None:
-                        reply_text = f"無法辨識 {raw_code}，請試試加後綴：\n- 台股：2330.TW 或 8081.TWO\n- 美股：AAPL\n- 港股：9988.HK\n- 日股：7203.T"
-                        print(f"{reply_text}")
+                        reply_text = (
+                            f"無法辨識 {raw_code}，請試試加後綴：\n"
+                            "- 台股：2330 或 2330.TW / 8081.TWO\n"
+                            "- 美股：AAPL\n"
+                            "- 港股：9988 或 9988.HK\n"
+                            "- 日股：7203 或 7203.T"
+                        )
                     else:
-                        # 去重加入
-                        #if stock_code not in CONFIG["tracked_stocks"]:
-                        #    CONFIG["tracked_stocks"].append(stock_code)
-                        
                         CONFIG["tracked_stocks"].add(stock_code)
                         analysis = analyze_stock_trend(stock_code, period)
                         reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n（使用代碼：{stock_code}）"
@@ -222,17 +221,11 @@ def handle_message(event: MessageEvent):
 # 核心分析函式
 # ────────────────────────────────────────────────
 def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
-    print("分析開始")
     try:
         stock = yf.Ticker(stock_code)
         hist = stock.history(period=period)
         if hist.empty or len(hist) < 50:
             return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
-            #print f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
-            #stock = yf.Ticker(stock_code + ".TWO")
-            #hist = stock.history(period=period)
-            #if hist.empty or len(hist) < 50:
-            #    return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
 
         df = hist.copy()
         close = df['Close']
@@ -240,7 +233,7 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         low = df['Low']
         volume = df['Volume']
 
-        # 基本趨勢
+        # 基本趨勢與均線
         avg_close = close.mean()
         trend = "上升" if close.iloc[-1] > avg_close else "下降"
         ma5 = close.rolling(5).mean().iloc[-1]
@@ -309,7 +302,7 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         predicted = model.predict(future_x).tolist()
         future_trend = "預測上漲" if predicted[-1] > close.iloc[-1] else "預測下跌"
 
-        # ── 強制格式化 Prompt ──
+        # 強制格式化 Prompt
         prompt = f"""
 你是一位專業台股技術分析師，請嚴格遵守以下格式回覆，總長度控制在 250 字以內，不要改變任何標題或結構：
 
@@ -342,6 +335,7 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
 - KD %K 最近10日：{k.tail(10).round(2).tolist()}
 - KD %D 最近10日：{d.tail(10).round(2).tolist()}
 """
+
         print(f"prompt 長度: {len(prompt)} 字元")
 
         client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY"))
@@ -361,14 +355,9 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         print(f"analyze_stock_trend 錯誤: {str(e)}")
         return f"分析錯誤：{str(e)}。請檢查股票代碼或網路。"
 
-
-
-
-
-
-
-
-
+# ────────────────────────────────────────────────
+# 工具函式（圖片上傳等）
+# ────────────────────────────────────────────────
 def upload_image_to_imgur(buf):
     buf.seek(0)
     response = requests.post(
@@ -378,27 +367,27 @@ def upload_image_to_imgur(buf):
     )
     return response.json()['data']['link'] if response.status_code == 200 else None
 
-# 定時分析（每天晚上 18:00 跑）
+# ────────────────────────────────────────────────
+# 定時任務
+# ────────────────────────────────────────────────
 def daily_analysis():
     print("=== 定時分析開始 ===")
-    CONFIG["tracked_stocks"] = sorted(set(CONFIG["tracked_stocks"]))
+    CONFIG["tracked_stocks"] = sorted(CONFIG["tracked_stocks"])  # set 已去重，再排序
     print(f"目前追蹤股票（去重後）：{CONFIG['tracked_stocks']}")
-    
-    if not datetime.now(ZoneInfo("Asia/Taipei")).weekday() in (5, 6):
+
+    # 週六日不推
+    if datetime.now(ZoneInfo("Asia/Taipei")).weekday() in (5, 6):
         print("六、日不傳送")
     else:
         for code in CONFIG["tracked_stocks"]:
             try:
                 analysis = analyze_stock_trend(code, "1y")
                 if CONFIG["user_id"]:
-                    print(f"傳送 {code} 分析至 {CONFIG["user_id"]} |內容:{analysis}")
+                    print(f"傳送 {code} 分析至 {CONFIG['user_id']}")
                     line_bot_api.push_message(CONFIG["user_id"], TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
             except Exception as e:
                 print(f"定時分析 {code} 失敗: {e}")
     print("=== 定時分析結束 ===")
-
-
-
 
 scheduler = BackgroundScheduler()
 print("BackgroundScheduler 已建立")
@@ -409,8 +398,6 @@ print("Scheduler 已啟動")
 
 print("=== 程式啟動完成 ===")
 
-
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))  # Railway 會設 PORT，本地 fallback 8000
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
