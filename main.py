@@ -195,9 +195,10 @@ def handle_message(event: MessageEvent):
                         print(f"{reply_text}")
                     else:
                         # 去重加入
-                        if stock_code not in CONFIG["tracked_stocks"]:
-                            CONFIG["tracked_stocks"].append(stock_code)
+                        #if stock_code not in CONFIG["tracked_stocks"]:
+                        #    CONFIG["tracked_stocks"].append(stock_code)
                         
+                        CONFIG["tracked_stocks"].add(code)
                         analysis = analyze_stock_trend(stock_code, period)
                         reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n（使用代碼：{stock_code}）"
             else:
