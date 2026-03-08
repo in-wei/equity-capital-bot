@@ -156,14 +156,14 @@ def handle_message(event: MessageEvent):
                 reply_text = (
                     "指令列表：\n"
                     "/分析 [代碼] [期間] → 分析股票（支援全球）\n"
-                    "/add [代碼] → 新增追蹤股票\n"
-                    "/remove [代碼] 或 /del [代碼] → 刪除追蹤\n"
+                    "/add [代碼] 或 /新增 [代碼] 或 /添加 [代碼] → 新增追蹤股票\n"
+                    "/remove [代碼] 或 /del [代碼] 或 /刪除 [代碼] 或 /移除 [代碼] → 刪除追蹤\n"
                     "/push on → 開啟每日推播\n"
                     "/push off → 關閉推播\n"
-                    "/list → 查看我的追蹤股票與推播狀態\n"
+                    "/list 或 /清單 → 查看我的追蹤股票與推播狀態\n"
                     "/分析 或 /add 時，系統會自動嘗試常見後綴（如台股 .TW、美股無後綴）"
                 )
-            elif text.startswith("/add "):
+            elif text.startswith("/add ", "/新增 ", "/添加"):
                 raw_code = text.split(" ", 1)[1].strip().upper()
                 stock_code, suffix_info = resolve_stock_code(raw_code)
             
@@ -176,7 +176,7 @@ def handle_message(event: MessageEvent):
                     USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
                     reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前追蹤 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔"
     
-            elif text.startswith(("/remove ", "/del ")):
+            elif text.startswith(("/remove ", "/del ","/刪除 ","/移除 ")):
                 cmd, code = text.split(" ", 1)
                 code = code.strip().upper()
                 user_id = event.source.user_id
@@ -201,7 +201,7 @@ def handle_message(event: MessageEvent):
                 else:
                     reply_text = "你尚未設定任何追蹤，無需關閉"
     
-            elif text.lower() == "/list":
+            elif text.startswith("/list","/清單"):
                 user_id = event.source.user_id
                 if user_id not in USER_SETTINGS or not USER_SETTINGS[user_id]["tracked_stocks"]:
                     reply_text = "你目前沒有追蹤任何股票"
