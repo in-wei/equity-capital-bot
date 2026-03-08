@@ -142,7 +142,7 @@ def handle_message(event: MessageEvent):
                 if len(parts) < 2:
                     reply_text = "格式錯誤：/分析 [股票代碼] [期間]"
                 else:
-                    code = parts[1].strip().upper() + ".TW"
+                    code = parts[1].strip().upper()
                     period = parts[2].strip() if len(parts) > 2 else "1y"
                     if period not in ["1d","5d","1mo","3mo","6mo","1y","2y","5y","10y","ytd","max"]:
                         reply_text = "期間格式錯誤，請用有效值（如 1y、5y、max）"
@@ -176,6 +176,11 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         hist = stock.history(period=period)
         if hist.empty or len(hist) < 50:
             return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
+            #print f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
+            #stock = yf.Ticker(stock_code + ".TWO")
+            #hist = stock.history(period=period)
+            #if hist.empty or len(hist) < 50:
+            #    return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
 
         df = hist.copy()
         close = df['Close']
