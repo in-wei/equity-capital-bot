@@ -220,6 +220,7 @@ def handle_message(event: MessageEvent):
 # 核心分析函式
 # ────────────────────────────────────────────────
 def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
+    print("分析開始")
     try:
         stock = yf.Ticker(stock_code)
         hist = stock.history(period=period)
