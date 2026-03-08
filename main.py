@@ -152,7 +152,7 @@ def handle_message(event: MessageEvent):
 
     def background_reply():
         try:
-            if text.lower() == "/help":
+            if text.startswith("/help", "/幫助"):
                 reply_text = (
                     "指令列表：\n"
                     "/分析 [代碼] [期間] → 分析股票（支援全球）\n"
