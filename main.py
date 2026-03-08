@@ -179,7 +179,7 @@ def handle_message(event: MessageEvent):
                             test_code = raw_code + suffix
                             try:
                                 stock = yf.Ticker(test_code)
-                                hist = stock.history(period="5d")  # 先用短期間測試是否有效
+                                hist = stock.history(period="1mo")  # 先用短期間測試是否有效
                                 if not hist.empty:
                                     stock_code = test_code
                                     used_suffix = suffix if suffix else "美股/無後綴"
