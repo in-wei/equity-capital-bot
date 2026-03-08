@@ -169,9 +169,11 @@ def handle_message(event: MessageEvent):
             
                     # 如果使用者已經給了後綴，直接用
                     if '.' in raw_code:
+                        print(f"有後綴，直接使用")
                         stock_code = raw_code
                         used_suffix = raw_code.split('.')[-1]
                     else:
+                        print(f"無後綴，嘗試加入後綴")
                         # 依序嘗試
                         for suffix in SUFFIX_PRIORITY:
                             test_code = raw_code + suffix
@@ -185,9 +187,11 @@ def handle_message(event: MessageEvent):
                                     break
                             except Exception:
                                 continue  # 失敗就試下一個
+                        print(f"嘗試結束")
             
                     if stock_code is None:
                         reply_text = f"無法辨識 {raw_code}，請試試加後綴：\n- 台股：2330.TW 或 8081.TWO\n- 美股：AAPL\n- 港股：9988.HK\n- 日股：7203.T"
+                        print(f"{reply_text}")
                     else:
                         # 去重加入
                         if stock_code not in CONFIG["tracked_stocks"]:
