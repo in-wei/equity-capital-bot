@@ -177,9 +177,10 @@ def handle_message(event: MessageEvent):
                         # 依序嘗試
                         for suffix in SUFFIX_PRIORITY:
                             test_code = raw_code + suffix
+                            print(f"目前嘗試{test_code}")
                             try:
                                 stock = yf.Ticker(test_code)
-                                hist = stock.history(period="1mo")  # 先用短期間測試是否有效
+                                hist = stock.history(period="5d)  # 先用短期間測試是否有效
                                 if not hist.empty:
                                     stock_code = test_code
                                     used_suffix = suffix if suffix else "美股/無後綴"
