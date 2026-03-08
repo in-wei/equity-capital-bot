@@ -151,7 +151,7 @@ def handle_message(event: MessageEvent):
                         analysis = analyze_stock_trend(code, period)
                         reply_text = f"{CONFIG['response_prefix']}：\n{analysis}"
             else:
-                reply_text = f"{CONFIG['response_prefix']}：你想對 {text} 做什麼呢？\n試試：/分析 2330 1y"
+                reply_text = f"{CONFIG['response_prefix']}：你想對 {text} 做什麼呢？\n試試：/分析 {text} 1y"
 
             line_bot_api.reply_message(
                 event.reply_token,
@@ -175,12 +175,12 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         stock = yf.Ticker(stock_code)
         hist = stock.history(period=period)
         if hist.empty or len(hist) < 50:
-            return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
-            #print f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
-            #stock = yf.Ticker(stock_code + ".TWO")
-            #hist = stock.history(period=period)
-            #if hist.empty or len(hist) < 50:
-            #    return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
+            #return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
+            print f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
+            stock = yf.Ticker(stock_code + ".TWO")
+            hist = stock.history(period=period)
+            if hist.empty or len(hist) < 50:
+                return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
 
         df = hist.copy()
         close = df['Close']
