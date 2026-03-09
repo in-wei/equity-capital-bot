@@ -163,7 +163,7 @@ def handle_message(event: MessageEvent):
                     "/list 或 /清單 → 查看我的追蹤股票與推播狀態\n"
                     "/分析 或 /add 時，系統會自動嘗試常見後綴（如台股 .TW、美股無後綴）"
                 )
-            elif text.startswith("/add ", "/新增 ", "/添加"):
+            elif text.startswith("/add "):
                 raw_code = text.split(" ", 1)[1].strip().upper()
                 stock_code, suffix_info = resolve_stock_code(raw_code)
             
@@ -176,7 +176,7 @@ def handle_message(event: MessageEvent):
                     USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
                     reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前追蹤 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔"
     
-            elif text.startswith(("/remove ", "/del ","/刪除 ","/移除 ")):
+            elif text.startswith(("/remove ", "/del ")):
                 cmd, code = text.split(" ", 1)
                 code = code.strip().upper()
                 user_id = event.source.user_id
