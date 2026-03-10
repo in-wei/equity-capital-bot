@@ -85,18 +85,29 @@ DB_USER = os.getenv("MYSQLUSER")
 DB_PASSWORD = os.getenv("MYSQLPASSWORD")
 DB_NAME = os.getenv("MYSQLDATABASE")
 
-if not all([YOUR_CHANNEL_ACCESS_TOKEN, YOUR_CHANNEL_SECRET, DB_HOST, DB_USER, DB_PASSWORD, DB_NAME]):
-    raise ValueError("缺少必要環境變數：LINE 或 MySQL 連接資訊")
+#if not all([YOUR_CHANNEL_ACCESS_TOKEN, YOUR_CHANNEL_SECRET, DB_HOST, DB_USER, DB_PASSWORD, DB_NAME]):
+#    raise ValueError("缺少必要環境變數：LINE 或 MySQL 連接資訊")
 
-print(f"TOKEN: {'有值' if YOUR_CHANNEL_ACCESS_TOKEN else '無'}")
-print(f"SECRET: {'有值' if YOUR_CHANNEL_SECRET else '無'}")
+print(f"LINE_TOKEN: {'有值' if YOUR_CHANNEL_ACCESS_TOKEN else '無'}")
+print(f"LINE_SECRET: {'有值' if YOUR_CHANNEL_SECRET else '無'}")
 print(f"GROQ_API_KEY: {'有值' if GROQ_API_KEY else '無'}")
-print(f"OLLAMA_HOST: {OLLAMA_HOST or '未設定'}")
-print(f"DB_HOST: {DB_HOST}")
-print(f"DB_PORT: {DB_PORT}")
-print(f"DB_USER: {DB_USER}")
-print(f"DB_NAME: {DB_NAME}")
+print(f"MYSQLHOST: {DB_HOST or '未注入！'}")
+print(f"MYSQLPORT: {DB_PORT}")
+print(f"MYSQLUSER: {DB_USER or '未注入！'}")
+print(f"MYSQLPASSWORD: {'有值' if DB_PASSWORD else '未注入！'}")
+print(f"MYSQLDATABASE: {DB_NAME or '未注入！'}")
 
+missing = []
+if not YOUR_CHANNEL_ACCESS_TOKEN: missing.append("LINE_CHANNEL_ACCESS_TOKEN")
+if not YOUR_CHANNEL_SECRET: missing.append("LINE_CHANNEL_SECRET")
+if not DB_HOST: missing.append("MYSQLHOST (MySQL 連線未注入)")
+if not DB_USER: missing.append("MYSQLUSER")
+if not DB_PASSWORD: missing.append("MYSQLPASSWORD")
+if not DB_NAME: missing.append("MYSQLDATABASE")
+
+if missing:
+    raise ValueError(f"缺少必要環境變數：{', '.join(missing)}。請確認 MySQL 服務已連接到 app。")
+    
 app = FastAPI()
 line_bot_api = LineBotApi(YOUR_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(YOUR_CHANNEL_SECRET)
