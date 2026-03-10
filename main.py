@@ -76,7 +76,7 @@ YOUR_CHANNEL_SECRET      = os.getenv("LINE_CHANNEL_SECRET")
 GROQ_API_KEY             = os.getenv("GROQ_API_KEY")
 OLLAMA_HOST              = os.getenv("OLLAMA_HOST")  # 可選
 
-DATA_SAFE_IN_RAM = False
+DATA_SAFE_IN_RAM = True
 
 # 新增：MySQL 環境變數
 DB_HOST = os.getenv("MYSQLHOST")
