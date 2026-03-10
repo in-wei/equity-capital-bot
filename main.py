@@ -120,10 +120,18 @@ def init_google_sheets() -> bool:
         creds2 = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         print(f"creds2.valid  -> {creds2.valid}")
         print(f"creds2.token  -> {creds2.token}")
+        if not creds2.valid:
+            creds2.refresh(request=None)  # 強制刷新 token
+            print(f"刷新後 creds2.token: {creds2.token}")  # 應有長字串 token
+        print(f"creds.to_json(): {creds2.to_json()}")  # 輸出完整 JSON（隱藏 private_key）
         
         creds = service_account.Credentials.from_service_account_file(creds_path, scopes=SCOPES)
         print(f"creds.valid   -> {creds.valid}")
         print(f"creds.token   -> {creds.token}")
+        if not creds.valid:
+            creds.refresh(request=None)  # 強制刷新 token
+            print(f"刷新後 creds.token: {creds.token}")  # 應有長字串 token
+        print(f"creds.to_json(): {creds.to_json()}")  # 輸出完整 JSON（隱藏 private_key）
         gc = gspread.authorize(creds)
         print(f"gc.auth.token -> {gc.auth.token}")
         sheets_list = gc.list_spreadsheet_files()  # 列出所有 Sheets
