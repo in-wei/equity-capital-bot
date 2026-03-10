@@ -112,13 +112,14 @@ def init_google_sheets() -> bool:
         return False
 
     try:
-        #try:
-        #    creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
-        #    print("JSON 解析成功，client_email:", creds_dict.get("client_email"))
-        #    print("private_key 前幾個字元:", creds_dict.get("private_key", "")[:50])
-        #except json.JSONDecodeError as e:
-        #    print("JSON 格式完全錯誤！", e)
-        #creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        try:
+            creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+            print("JSON 解析成功，client_email:", creds_dict.get("client_email"))
+            print("private_key 前幾個字元:", creds_dict.get("private_key", "")[:50])
+        except json.JSONDecodeError as e:
+            print("JSON 格式完全錯誤！", e)
+        creds2 = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        print(f"creds2 -> {creds2}")
         creds = service_account.Credentials.from_service_account_file(creds_path, scopes=SCOPES)
         print(f"creds -> {creds}")
         gc = gspread.authorize(creds)
