@@ -106,7 +106,7 @@ worksheet = None
 def init_google_sheets():
     global gc, worksheet_stocks, worksheet_settings
     try:
-        creds = service_account.Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+        creds = service_account.Credentials.from_service_account_file(creds_json, scopes=SCOPES)
         gc = gspread.authorize(creds)
         spreadsheet = gc.open_by_key(SHEET_ID)
 
