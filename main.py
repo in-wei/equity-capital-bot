@@ -87,7 +87,7 @@ if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
 creds_path = "/app/credentials/service-account.json"
 if not os.path.exists(creds_path) and GOOGLE_CREDENTIALS_JSON:
     with open(creds_path, "w") as f:
-        f.write(GOOGLE_APPLICATION_CREDENTIALS_JSON)
+        f.write(GOOGLE_CREDENTIALS_JSON)
 
 # ─── 3. 初始化 FastAPI、LineBot、Google Sheets ──────────────────────────────
 
@@ -111,12 +111,12 @@ def init_google_sheets() -> bool:
         return False
 
     try:
-        try:
-            creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
-            print("JSON 解析成功，client_email:", creds_dict.get("client_email"))
-            print("private_key 前幾個字元:", creds_dict.get("private_key", "")[:50])
-        except json.JSONDecodeError as e:
-            print("JSON 格式完全錯誤！", e)
+        #try:
+        #    creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+        #    print("JSON 解析成功，client_email:", creds_dict.get("client_email"))
+        #    print("private_key 前幾個字元:", creds_dict.get("private_key", "")[:50])
+        #except json.JSONDecodeError as e:
+        #    print("JSON 格式完全錯誤！", e)
         #creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         creds = service_account.Credentials.from_service_account_file(creds_path, scopes=SCOPES)
         gc = gspread.authorize(creds)
