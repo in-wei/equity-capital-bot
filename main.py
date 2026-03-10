@@ -26,6 +26,26 @@ import uvicorn
 # ────────────────────────────────────────────────
 # 全域設定與後綴優先順序（這裡統一管理，易修改）
 # ────────────────────────────────────────────────
+
+COMMAND_ALIASES = {
+    "help":     ["/help", "幫助", "指令", "功能", "menu", "commands"],
+    "add":      ["/add", "/新增", "/添加", "/加入", "add", "新增", "添加", "加入"],
+    "remove":   ["/remove", "/del", "/刪除", "/移除", "remove", "del", "刪除", "移除"],
+    "list":     ["/list", "/清單", "/我的清單", "list", "清單", "tracked", "我的追蹤"],
+    "push_on":  ["/push on", "/推播開", "/開啟推播", "push on", "push 开", "開推播"],
+    "push_off": ["/push off", "/推播關", "/關閉推播", "push off", "push 关", "關推播"],
+    "analyze":  ["/分析", "/analyze", "分析", "查", "stock", "trend", "檢視"],
+}
+
+CONFIG = {
+    "response_prefix": "bot",
+    "mode": "normal",
+    "rate_limit": 5,
+    "is_active": True,
+    "tracked_stocks": set(),  # 使用 set 自動去重
+    "user_id": ""             # 暫存最後使用者 ID（生產建議用 DB）
+}
+
 SUFFIX_PRIORITY = [
     "",       # 美股、歐股等無後綴優先
     ".TW",    # 台股主板
@@ -42,15 +62,6 @@ SUFFIX_PRIORITY = [
     ".F",     # 德國
     # 新增市場就在這裡加一行，例如 ".SA" 巴西
 ]
-
-CONFIG = {
-    "response_prefix": "bot",
-    "mode": "normal",
-    "rate_limit": 5,
-    "is_active": True,
-    "tracked_stocks": set(),  # 使用 set 自動去重
-    "user_id": ""             # 暫存最後使用者 ID（生產建議用 DB）
-}
 
 USER_SETTINGS = {}
 
@@ -142,103 +153,109 @@ async def callback(request: Request):
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event: MessageEvent):
     text = event.message.text.strip()
-    print(f"收到訊息: '{text}' | user_id: {event.source.user_id}")
-
-    CONFIG["user_id"] = event.source.user_id
-
-    if not CONFIG["is_active"] or not text:
-        print("忽略無效訊息")
+    if not text:
         return
+
+    # 轉成小寫來比對（比較保險）
+    text_lower = text.lower()
+
+    # 找出匹配的標準指令
+    matched_cmd = None
+    for cmd, aliases in COMMAND_ALIASES.items():
+        for alias in aliases:
+            # 精確開頭匹配（避免誤觸）
+            if text_lower.startswith(alias.lower()) or text_lower == alias.lower():
+                matched_cmd = cmd
+                # 取出參數部分
+                if len(alias) < len(text):
+                    arg_part = text[len(alias):].strip()
+                else:
+                    arg_part = ""
+                break
+        if matched_cmd:
+            break
+
+    if matched_cmd is None:
+        # 沒匹配到任何指令 → 當一般對話或提示
+        reply_text = f"{CONFIG['response_prefix']}：你說「{text}」… 要分析股票嗎？試試：/分析 2330 1y 或 直接輸入股票代碼"
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+        return
+
+    # ─── 以下根據 matched_cmd 處理 ────────────────────────────────
+    user_id = event.source.user_id
+    if user_id not in USER_SETTINGS:
+        USER_SETTINGS[user_id] = {"tracked_stocks": set(), "push_enabled": True}
 
     def background_reply():
         try:
-            if text.lower() == "/help":
+            if matched_cmd == "help":
                 reply_text = (
-                    "指令列表：\n"
-                    "/分析 [代碼] [期間] → 分析股票（支援全球）\n"
-                    "/add [代碼] 或 /新增 [代碼] 或 /添加 [代碼] → 新增追蹤股票\n"
-                    "/remove [代碼] 或 /del [代碼] 或 /刪除 [代碼] 或 /移除 [代碼] → 刪除追蹤\n"
-                    "/push on → 開啟每日推播\n"
-                    "/push off → 關閉推播\n"
-                    "/list 或 /清單 → 查看我的追蹤股票與推播狀態\n"
-                    "/分析 或 /add 時，系統會自動嘗試常見後綴（如台股 .TW、美股無後綴）"
+                    "可用指令（中英文皆可）：\n"
+                    "• 幫助 /help\n"
+                    "• 新增追蹤 /add /新增 [代碼]\n"
+                    "• 移除追蹤 /del /移除 [代碼]\n"
+                    "• 查看清單 /list /清單\n"
+                    "• 開啟推播 /push on /推播開\n"
+                    "• 關閉推播 /push off /推播關\n"
+                    "• 分析股票 /分析 [代碼] [期間]（預設1y）\n"
+                    "\n範例：/分析 TSLA 6mo   或   分析 2330"
                 )
-            elif text.startswith("/add "):
-                raw_code = text.split(" ", 1)[1].strip().upper()
-                stock_code, suffix_info = resolve_stock_code(raw_code)
-            
-                if stock_code is None:
-                    reply_text = suffix_info  # 錯誤訊息
+
+            elif matched_cmd == "add":
+                if not arg_part:
+                    reply_text = "請提供股票代碼，例如：/新增 2330 或 /add AAPL"
                 else:
-                    user_id = event.source.user_id
-                    if user_id not in USER_SETTINGS:
-                        USER_SETTINGS[user_id] = {"tracked_stocks": set(), "push_enabled": True}
-                    USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
-                    reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前追蹤 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔"
-    
-            elif text.startswith(("/remove ", "/del ")):
-                cmd, code = text.split(" ", 1)
-                code = code.strip().upper()
-                user_id = event.source.user_id
-                if user_id in USER_SETTINGS and code in USER_SETTINGS[user_id]["tracked_stocks"]:
-                    USER_SETTINGS[user_id]["tracked_stocks"].remove(code)
-                    reply_text = f"已移除追蹤：{code}（剩餘 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔）"
+                    stock_code, suffix_info = resolve_stock_code(arg_part.upper())
+                    if stock_code is None:
+                        reply_text = suffix_info
+                    else:
+                        USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
+                        reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前共 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔"
+
+            elif matched_cmd == "remove":
+                if not arg_part:
+                    reply_text = "請提供要移除的代碼，例如：/移除 2330"
                 else:
-                    reply_text = f"未找到 {code} 在你的追蹤清單中"
-    
-            elif text.lower() == "/push on":
-                user_id = event.source.user_id
-                if user_id not in USER_SETTINGS:
-                    USER_SETTINGS[user_id] = {"tracked_stocks": set(), "push_enabled": True}
-                USER_SETTINGS[user_id]["push_enabled"] = True
-                reply_text = "已開啟每日推播（若有追蹤股票，晚上18:00會收到報告）"
-    
-            elif text.lower() == "/push off":
-                user_id = event.source.user_id
-                if user_id in USER_SETTINGS:
-                    USER_SETTINGS[user_id]["push_enabled"] = False
-                    reply_text = "已關閉每日推播"
-                else:
-                    reply_text = "你尚未設定任何追蹤，無需關閉"
-    
-            elif text.lower() == "/list":
-                user_id = event.source.user_id
-                if user_id not in USER_SETTINGS or not USER_SETTINGS[user_id]["tracked_stocks"]:
+                    code = arg_part.strip().upper()
+                    if code in USER_SETTINGS[user_id]["tracked_stocks"]:
+                        USER_SETTINGS[user_id]["tracked_stocks"].remove(code)
+                        reply_text = f"已移除 {code}（剩餘 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔）"
+                    else:
+                        reply_text = f"你的清單中沒有 {code}"
+
+            elif matched_cmd == "list":
+                stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
+                push_status = "已開啟" if USER_SETTINGS[user_id]["push_enabled"] else "已關閉"
+                if not stocks:
                     reply_text = "你目前沒有追蹤任何股票"
                 else:
-                    stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
-                    push_status = "開啟" if USER_SETTINGS[user_id]["push_enabled"] else "關閉"
-                    reply_text = f"你的追蹤股票（共 {len(stocks)} 檔）：\n" + "\n".join(stocks) + f"\n\n每日推播：{push_status}"
+                    reply_text = f"追蹤清單（{len(stocks)}檔）：\n" + "\n".join(stocks) + f"\n\n每日推播：{push_status}"
 
-            elif text.startswith("/分析 "):
-                parts = text.split(" ", 2)
-                if len(parts) < 2:
-                    reply_text = "格式錯誤：/分析 [股票代碼] [期間]"
+            elif matched_cmd in ("push_on", "push_off"):
+                USER_SETTINGS[user_id]["push_enabled"] = (matched_cmd == "push_on")
+                status = "開啟" if USER_SETTINGS[user_id]["push_enabled"] else "關閉"
+                reply_text = f"每日推播已{status}（晚上18:00更新）"
+
+            elif matched_cmd == "analyze":
+                parts = arg_part.split(maxsplit=1)
+                raw_code = parts[0].strip().upper() if parts else ""
+                period = parts[1].strip() if len(parts) > 1 else "1y"
+
+                if not raw_code:
+                    reply_text = "請提供股票代碼，例如：/分析 2330  或  分析 AAPL 6mo"
                 else:
-                    raw_code = parts[1].strip().upper()
-                    period = parts[2].strip() if len(parts) > 2 else "1y"
-
                     stock_code, suffix_info = resolve_stock_code(raw_code)
-                    
                     if stock_code is None:
-                        reply_text = suffix_info  # 錯誤訊息
+                        reply_text = suffix_info
                     else:
                         analysis = analyze_stock_trend(stock_code, period)
-                        reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n（使用代碼：{stock_code}）"
-            else:
-                reply_text = f"{CONFIG['response_prefix']}：你想對 {text} 做什麼呢？\n試試：/分析 {text} 1y"
+                        reply_text = f"{CONFIG['response_prefix']}：\n{analysis}\n（{stock_code} {suffix_info}）"
 
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text=reply_text)
-            )
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+
         except Exception as e:
-            print(f"Reply 失敗: {str(e)}")
-            if CONFIG["user_id"]:
-                try:
-                    line_bot_api.push_message(CONFIG["user_id"], TextSendMessage(text="分析出錯，請稍後重試。"))
-                except Exception as push_e:
-                    print(f"Push 也失敗: {str(push_e)}")
+            print(f"處理指令失敗: {e}")
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="處理時發生錯誤，請稍後再試～"))
 
     Thread(target=background_reply, daemon=True).start()
 
