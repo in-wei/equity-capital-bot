@@ -87,7 +87,7 @@ if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
 creds_path = "/app/credentials/service-account.json"
 if not os.path.exists(creds_path) and GOOGLE_CREDENTIALS_JSON:
     with open(creds_path, "w") as f:
-        f.write(GOOGLE_CREDENTIALS_JSON)
+        f.write(GOOGLE_APPLICATION_CREDENTIALS_JSON)
 
 # ─── 3. 初始化 FastAPI、LineBot、Google Sheets ──────────────────────────────
 
