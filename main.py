@@ -382,7 +382,7 @@ def handle_message(event: MessageEvent):
                 if DATA_SAFE_IN_RAM:
                     stocks = sorted(get_tracked_stocks(user_id))
                     push_status = "開啟" if get_push_enabled(user_id) else "關閉"
-                else
+                else:
                     stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
                     push_status = "已開啟" if USER_SETTINGS[user_id]["push_enabled"] else "已關閉"
                     
