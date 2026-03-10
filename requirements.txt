@@ -10,6 +10,10 @@ matplotlib
 pandas
 requests
 numpy
-mysql-connector-python
 
+# Google Sheets 相關（gspread + 認證）
+gspread>=6.0.0
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.2.0
 
