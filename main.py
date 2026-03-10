@@ -123,7 +123,9 @@ def init_google_sheets() -> bool:
         creds = service_account.Credentials.from_service_account_file(creds_path, scopes=SCOPES)
         print(f"creds -> {creds}")
         gc = gspread.authorize(creds)
+        print(f"gc -> {gc}")
         spreadsheet = gc.open_by_key(SHEET_ID)
+        print(f"spreadsheet -> {spreadsheet}")
 
         # 追蹤股票工作表
         try:
