@@ -38,6 +38,12 @@ COMMAND_ALIASES = {
     "analyze":  ["/分析", "/analyze", "分析", "查", "stock", "trend", "檢視"],
 }
 
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive"
+]
+
 CONFIG = {
     "response_prefix": "bot",
     "mode": "normal",
