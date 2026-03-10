@@ -180,6 +180,12 @@ def handle_message(event: MessageEvent):
         reply_text = f"{CONFIG['response_prefix']}：你說「{text}」… 要分析股票嗎？試試：/分析 2330 1y 或 直接輸入股票代碼"
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
         return
+        
+    if not matched_cmd and len(text.strip().split()) <= 2 and text.isalnum() or '.' in text:
+        # 很可能是直接輸入代碼 → 當成分析
+        matched_cmd = "analyze"
+        arg_part = text
+        # 然後進入上面的 analyze 處理邏輯        
 
     # ─── 以下根據 matched_cmd 處理 ────────────────────────────────
     user_id = event.source.user_id
