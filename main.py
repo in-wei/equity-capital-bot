@@ -22,7 +22,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 import uvicorn
-import mysql.connector
+
 # ────────────────────────────────────────────────
 # 全域設定與後綴優先順序（這裡統一管理，易修改）
 # ────────────────────────────────────────────────
@@ -76,169 +76,19 @@ YOUR_CHANNEL_SECRET      = os.getenv("LINE_CHANNEL_SECRET")
 GROQ_API_KEY             = os.getenv("GROQ_API_KEY")
 OLLAMA_HOST              = os.getenv("OLLAMA_HOST")  # 可選
 
-DATA_SAFE_IN_RAM = True
+if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
+    raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET")
 
-# 新增：MySQL 環境變數
-DB_HOST = os.getenv("MYSQLHOST")
-DB_PORT = int(os.getenv("MYSQLPORT", 3306))
-DB_USER = os.getenv("MYSQLUSER")
-DB_PASSWORD = os.getenv("MYSQLPASSWORD")
-DB_NAME = os.getenv("MYSQLDATABASE")
-
-#if not all([YOUR_CHANNEL_ACCESS_TOKEN, YOUR_CHANNEL_SECRET, DB_HOST, DB_USER, DB_PASSWORD, DB_NAME]):
-#    raise ValueError("缺少必要環境變數：LINE 或 MySQL 連接資訊")
-
-print(f"LINE_TOKEN: {'有值' if YOUR_CHANNEL_ACCESS_TOKEN else '無'}")
-print(f"LINE_SECRET: {'有值' if YOUR_CHANNEL_SECRET else '無'}")
+print(f"TOKEN: {'有值' if YOUR_CHANNEL_ACCESS_TOKEN else '無'}")
+print(f"SECRET: {'有值' if YOUR_CHANNEL_SECRET else '無'}")
 print(f"GROQ_API_KEY: {'有值' if GROQ_API_KEY else '無'}")
-print(f"MYSQLHOST: {DB_HOST or '未注入！'}")
-print(f"MYSQLPORT: {DB_PORT}")
-print(f"MYSQLUSER: {DB_USER or '未注入！'}")
-print(f"MYSQLPASSWORD: {'有值' if DB_PASSWORD else '未注入！'}")
-print(f"MYSQLDATABASE: {DB_NAME or '未注入！'}")
+print(f"OLLAMA_HOST: {OLLAMA_HOST or '未設定'}")
 
-missing = []
-if not YOUR_CHANNEL_ACCESS_TOKEN: missing.append("LINE_CHANNEL_ACCESS_TOKEN")
-if not YOUR_CHANNEL_SECRET: missing.append("LINE_CHANNEL_SECRET")
-if not DB_HOST: missing.append("MYSQLHOST (MySQL 連線未注入)")
-if not DB_USER: missing.append("MYSQLUSER")
-if not DB_PASSWORD: missing.append("MYSQLPASSWORD")
-if not DB_NAME: missing.append("MYSQLDATABASE")
-
-if missing:
-    raise ValueError(f"缺少必要環境變數：{', '.join(missing)}。請確認 MySQL 服務已連接到 app。")
-    
 app = FastAPI()
 line_bot_api = LineBotApi(YOUR_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(YOUR_CHANNEL_SECRET)
 
 start_service = datetime.now(ZoneInfo("Asia/Taipei"))
-
-# ────────────────────────────────────────────────
-# 新增：MySQL 連接與初始化
-# ────────────────────────────────────────────────
-def get_db_connection():
-    return mysql.connector.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        database=DB_NAME
-    )
-
-def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    # 建立 users 表格
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id VARCHAR(255) PRIMARY KEY,
-            push_enabled BOOLEAN DEFAULT TRUE
-        )
-    """)
-    # 建立 tracked_stocks 表格
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tracked_stocks (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id VARCHAR(255),
-            stock_code VARCHAR(50),
-            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-        )
-    """)
-    conn.commit()
-    cursor.close()
-    conn.close()
-    print("資料庫表格已初始化")
-
-# 在程式啟動時呼叫
-init_db()
-
-# ────────────────────────────────────────────────
-# 新增：DB 操作函式
-# ────────────────────────────────────────────────
-def add_user_if_not_exists(user_id: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("INSERT IGNORE INTO users (user_id) VALUES (%s)", (user_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-def add_tracked_stock(user_id: str, stock_code: str):
-    add_user_if_not_exists(user_id)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO tracked_stocks (user_id, stock_code) VALUES (%s, %s)",
-        (user_id, stock_code)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-def remove_tracked_stock(user_id: str, stock_code: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "DELETE FROM tracked_stocks WHERE user_id = %s AND stock_code = %s",
-        (user_id, stock_code)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return cursor.rowcount > 0  # 返回是否刪除成功
-
-def get_tracked_stocks(user_id: str) -> set:
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT stock_code FROM tracked_stocks WHERE user_id = %s", (user_id,))
-    stocks = {row[0] for row in cursor.fetchall()}
-    cursor.close()
-    conn.close()
-    return stocks
-
-def get_push_enabled(user_id: str) -> bool:
-    add_user_if_not_exists(user_id)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT push_enabled FROM users WHERE user_id = %s", (user_id,))
-    result = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return result[0] if result else True  # 預設 True
-
-def set_push_enabled(user_id: str, enabled: bool):
-    add_user_if_not_exists(user_id)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE users SET push_enabled = %s WHERE user_id = %s",
-        (enabled, user_id)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-def get_all_users_with_push_enabled() -> dict:
-    """返回 {user_id: [stocks]} 的字典，只包含 push_enabled=True 的使用者"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT u.user_id, ts.stock_code
-        FROM users u
-        LEFT JOIN tracked_stocks ts ON u.user_id = ts.user_id
-        WHERE u.push_enabled = TRUE
-    """)
-    users = {}
-    for row in cursor.fetchall():
-        user_id, stock_code = row
-        if user_id not in users:
-            users[user_id] = []
-        if stock_code:
-            users[user_id].append(stock_code)
-    cursor.close()
-    conn.close()
-    return users
 
 # ────────────────────────────────────────────────
 # 路由 - 健康檢查與 debug
@@ -365,10 +215,7 @@ def handle_message(event: MessageEvent):
                     if stock_code is None:
                         reply_text = suffix_info
                     else:
-                        if DATA_SAFE_IN_RAM:
-                            USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
-                        else:
-                            add_tracked_stock(user_id, stock_code)
+                        USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
                         reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前共 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔"
 
             elif matched_cmd == "remove":
@@ -376,39 +223,24 @@ def handle_message(event: MessageEvent):
                     reply_text = "請提供要移除的代碼，例如：/移除 2330"
                 else:
                     code = arg_part.strip().upper()
-                    if DATA_SAFE_IN_RAM:
-                        removed = remove_tracked_stock(user_id, code)
-                        if removed:
-                            reply_text = f"已移除追蹤：{code}（剩餘 {len(get_tracked_stocks(user_id))} 檔）"
-                        else:
-                            reply_text = f"未找到 {code} 在你的追蹤清單中"
+                    if code in USER_SETTINGS[user_id]["tracked_stocks"]:
+                        USER_SETTINGS[user_id]["tracked_stocks"].remove(code)
+                        reply_text = f"已移除 {code}（剩餘 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔）"
                     else:
-                        if code in USER_SETTINGS[user_id]["tracked_stocks"]:
-                            USER_SETTINGS[user_id]["tracked_stocks"].remove(code)
-                            reply_text = f"已移除 {code}（剩餘 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔）"
-                        else:
-                            reply_text = f"你的清單中沒有 {code}"
+                        reply_text = f"你的清單中沒有 {code}"
 
             elif matched_cmd == "list":
-                if DATA_SAFE_IN_RAM:
-                    stocks = sorted(get_tracked_stocks(user_id))
-                    push_status = "開啟" if get_push_enabled(user_id) else "關閉"
-                else:
-                    stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
-                    push_status = "已開啟" if USER_SETTINGS[user_id]["push_enabled"] else "已關閉"
-                    
+                stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
+                push_status = "已開啟" if USER_SETTINGS[user_id]["push_enabled"] else "已關閉"
                 if not stocks:
                     reply_text = "你目前沒有追蹤任何股票"
                 else:
                     reply_text = f"追蹤清單（{len(stocks)}檔）：\n" + "\n".join(stocks) + f"\n\n每日推播：{push_status}"
 
             elif matched_cmd in ("push_on", "push_off"):
-                if DATA_SAFE_IN_RAM:
-                    USER_SETTINGS[user_id]["push_enabled"] = (matched_cmd == "push_on")
-                    status = "開啟" if USER_SETTINGS[user_id]["push_enabled"] else "關閉"
-                else:
-                    set_push_enabled(user_id, matched_cmd == "push_on")
-                reply_text = f"每日推播已{matched_cmd == "push_on"}（晚上18:00更新）"
+                USER_SETTINGS[user_id]["push_enabled"] = (matched_cmd == "push_on")
+                status = "開啟" if USER_SETTINGS[user_id]["push_enabled"] else "關閉"
+                reply_text = f"每日推播已{status}（晚上18:00更新）"
 
             elif matched_cmd == "analyze":
                 parts = arg_part.split(maxsplit=1)
@@ -625,30 +457,18 @@ def daily_analysis():
     if datetime.now(ZoneInfo("Asia/Taipei")).weekday() in (5, 6):
         print("六、日不傳送")
         return
-    if DATA_SAFE_IN_RAM:
-        users = get_all_users_with_push_enabled()
-        for user_id, stocks in users.items():
-            if not stocks:
-                continue
-            print(f"推播給 {user_id}，追蹤 {len(stocks)} 檔")
-            for code in sorted(set(stocks)):  # 去重
-                try:
-                    analysis = analyze_stock_trend(code, "1y")
-                    line_bot_api.push_message(user_id, TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
-                except Exception as e:
-                    print(f"推播 {code} 到 {user_id} 失敗: {e}")
-    else:
-        for user_id, settings in USER_SETTINGS.items():
-            if not settings["push_enabled"] or not settings["tracked_stocks"]:
-                continue
     
-            print(f"推播給 {user_id}，追蹤 {len(settings['tracked_stocks'])} 檔")
-            for code in sorted(settings["tracked_stocks"]):
-                try:
-                    analysis = analyze_stock_trend(code, "1y")
-                    line_bot_api.push_message(user_id, TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
-                except Exception as e:
-                    print(f"推播 {code} 到 {user_id} 失敗: {e}")
+    for user_id, settings in USER_SETTINGS.items():
+        if not settings["push_enabled"] or not settings["tracked_stocks"]:
+            continue
+
+        print(f"推播給 {user_id}，追蹤 {len(settings['tracked_stocks'])} 檔")
+        for code in sorted(settings["tracked_stocks"]):
+            try:
+                analysis = analyze_stock_trend(code, "1y")
+                line_bot_api.push_message(user_id, TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
+            except Exception as e:
+                print(f"推播 {code} 到 {user_id} 失敗: {e}")
     print("=== 定時分析結束 ===")
 
 scheduler = BackgroundScheduler()
