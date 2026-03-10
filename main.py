@@ -57,7 +57,9 @@ SUFFIX_PRIORITY = [
 ]
 
 SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets"
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.file"
 ]
 
 # 執行時全域狀態
