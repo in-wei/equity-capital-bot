@@ -116,14 +116,25 @@ def init_google_sheets() -> bool:
             print("private_key 前幾個字元:", creds_dict.get("private_key", "")[:50])
         except json.JSONDecodeError as e:
             print("JSON 格式完全錯誤！", e)
+            
         creds2 = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        print(f"creds2 -> {creds2}")
+        print(f"creds2.valid  -> {creds2.valid}")
+        print(f"creds2.token  -> {creds2.token}")
+        
         creds = service_account.Credentials.from_service_account_file(creds_path, scopes=SCOPES)
-        print(f"creds -> {creds}")
+        print(f"creds.valid   -> {creds.valid}")
+        print(f"creds.token   -> {creds.token}")
         gc = gspread.authorize(creds)
-        print(f"gc -> {gc}")
+        print(f"gc.auth.token -> {gc.auth.token}")
+        sheets_list = gc.list_spreadsheet_files()  # 列出所有 Sheets
+        print(f"帳號下 Sheets 清單: {sheets_list}")  # 輸出 list of dicts，如 [{'id': 'your_sheet_id', 'name': 'Sheet Name'}]
+        if sheets_list:
+            print("gc 有效，已抓到 Sheets 資料！")
+        else:
+            print("gc 有效，但帳號下無 Sheets")
         spreadsheet = gc.open_by_key(SHEET_ID)
-        print(f"spreadsheet -> {spreadsheet}")
+        print(f"spreadsheet.title -> {spreadsheet.title}")
+        print(f"spreadsheet.worksheets() -> {len(spreadsheet.worksheets())} 個工作表")
 
         # 追蹤股票工作表
         try:
