@@ -90,7 +90,7 @@ GOOGOE_SHEET_ID = os.getenv("SHEET_ID")
 WORKSHEET_NAME = "tracked_stocks"          # 工作表名稱，可自訂
 WORKSHEET_SETTINGS = "user_settings"    # 使用者設定（含推播開關）
 
-Local_Memorry = False
+M_Local_Memorry = False
 
 if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
     raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET")
@@ -109,35 +109,50 @@ start_service = datetime.now(ZoneInfo("Asia/Taipei"))
 # 全域 client（啟動時建立一次）
 gc = None
 worksheet = None
+worksheet_stocks = None
+worksheet_settings = None
 
 def init_google_sheets():
-    global gc, worksheet_stocks, worksheet_settings
+    global worksheet_stocks, worksheet_settings
+
+    if not SHEET_ID or not GOOGLE_CREDENTIALS_JSON:
+        print("缺少 GOOGLE_SHEET_ID 或 GOOGLE_CREDENTIALS 環境變數 → 使用記憶體模式")
+        return False
+
     try:
-        creds = service_account.Credentials.from_service_account_file(creds_json, scopes=SCOPES)
+        creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=SCOPES
+        )
         gc = gspread.authorize(creds)
         spreadsheet = gc.open_by_key(SHEET_ID)
 
         # 股票工作表
         try:
-            worksheet_stocks = spreadsheet.worksheet(WORKSHEET_STOCKS)
+            worksheet_stocks = spreadsheet.worksheet("tracked_stocks")
         except gspread.exceptions.WorksheetNotFound:
-            worksheet_stocks = spreadsheet.add_worksheet(title=WORKSHEET_STOCKS, rows=1000, cols=4)
+            worksheet_stocks = spreadsheet.add_worksheet(title="tracked_stocks", rows=1000, cols=4)
             worksheet_stocks.append_row(["user_id", "stock_code", "added_at", "memo"])
 
         # 設定工作表
         try:
-            worksheet_settings = spreadsheet.worksheet(WORKSHEET_SETTINGS)
+            worksheet_settings = spreadsheet.worksheet("user_settings")
         except gspread.exceptions.WorksheetNotFound:
-            worksheet_settings = spreadsheet.add_worksheet(title=WORKSHEET_SETTINGS, rows=1000, cols=4)
+            worksheet_settings = spreadsheet.add_worksheet(title="user_settings", rows=1000, cols=4)
             worksheet_settings.append_row(["user_id", "push_enabled", "last_updated", "notes"])
 
-        print("Google Sheets 初始化完成（stocks + settings）")
+        print("Google Sheets 初始化成功")
+        return True
+    except json.JSONDecodeError:
+        print("GOOGLE_CREDENTIALS JSON 格式錯誤")
+        return False
     except Exception as e:
-        print(f"Google Sheets 連線失敗: {e}")
-        worksheet_stocks = worksheet_settings = None
+        print(f"Google Sheets 初始化失敗: {str(e)}")
+        return False
 
 # 在程式最開頭（import 後、app = FastAPI() 前）呼叫
-init_google_sheets()
+M_Local_Memorry = not init_google_sheets()
 
 # ────────────────────────────────────────────────
 # 路由 - 健康檢查與 debug
@@ -264,7 +279,7 @@ def handle_message(event: MessageEvent):
                     if stock_code is None:
                         reply_text = suffix_info
                     else:
-                        if Local_Memorry:
+                        if M_Local_Memorry:
                             USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
                             reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前共 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔"
                         else:
@@ -280,7 +295,7 @@ def handle_message(event: MessageEvent):
                     reply_text = "請提供要移除的代碼，例如：/移除 2330"
                 else:
                     code = arg_part.strip().upper()
-                    if Local_Memorry:
+                    if M_Local_Memorry:
                         if code in USER_SETTINGS[user_id]["tracked_stocks"]:
                             USER_SETTINGS[user_id]["tracked_stocks"].remove(code)
                             reply_text = f"已移除 {code}（剩餘 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔）"
@@ -296,7 +311,7 @@ def handle_message(event: MessageEvent):
                         else:
                             reply_text = f"你的清單中沒有 {code}"
             elif matched_cmd == "list":
-                if Local_Memorry:
+                if M_Local_Memorry:
                     stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
                     push_status = "已開啟" if USER_SETTINGS[user_id]["push_enabled"] else "已關閉"
                 else:
@@ -309,7 +324,7 @@ def handle_message(event: MessageEvent):
                     reply_text = f"追蹤清單（{len(stocks)}檔）：\n" + "\n".join(stocks) + f"\n\n每日推播：{push_status}"
             elif matched_cmd in ("push_on", "push_off"):
                 enabled = (matched_cmd == "push_on")
-                if Local_Memorry:
+                if M_Local_Memorry:
                     USER_SETTINGS[user_id]["push_enabled"] = enabled
                 else:
                     set_push_enabled(user_id, enabled)
@@ -607,7 +622,7 @@ def daily_analysis():
         print("六、日不傳送")
         return
 
-    if Local_Memorry:
+    if M_Local_Memorry:
         for user_id, settings in USER_SETTINGS.items():
             if not settings["push_enabled"] or not settings["tracked_stocks"]:
                 continue
