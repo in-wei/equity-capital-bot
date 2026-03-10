@@ -5,7 +5,6 @@
 import sys
 import os
 import json
-import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from threading import Thread
@@ -28,10 +27,6 @@ from apscheduler.triggers.cron import CronTrigger
 
 from google.oauth2 import service_account
 import gspread
-
-print("UTC 現在時間:", datetime.utcnow().isoformat())
-print("本地時間 (Asia/Taipei):", datetime.now(ZoneInfo("Asia/Taipei")).isoformat())
-print("時間戳 (秒):", int(time.time()))
 
 # ─── 1. 全域設定與常數 ──────────────────────────────────────────────────────
 
@@ -58,8 +53,8 @@ SUFFIX_PRIORITY = [
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/drive.file"
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive"
 ]
 
 # 執行時全域狀態
@@ -67,6 +62,12 @@ CONFIG = {
     "response_prefix": "bot",
     "rate_limit": 5,
     "is_active": True,
+}
+
+# --- Google Sheet 初始化 ---
+GSHEET = {
+    "user_settings": None,
+    "tracked_stocks": None,
 }
 
 USER_SETTINGS = {}               # 記憶體模式下暫存使用者資料
@@ -107,9 +108,6 @@ def init_google_sheets() -> bool:
     try:
         try:
             creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
-            print("使用 client_email:", creds_dict.get("client_email"))
-            print("private_key_id:", creds_dict.get("private_key_id"))
-            print("key 長度:", len(creds_dict.get("private_key", "")))
             print("JSON 解析成功，client_email:", creds_dict.get("client_email"))
             print("private_key 前幾個字元:", creds_dict.get("private_key", "")[:50])
         except json.JSONDecodeError as e:
@@ -124,6 +122,7 @@ def init_google_sheets() -> bool:
         except gspread.exceptions.WorksheetNotFound:
             worksheet_stocks = spreadsheet.add_worksheet(title="tracked_stocks", rows=1000, cols=4)
             worksheet_stocks.append_row(["user_id", "stock_code", "added_at", "memo"])
+        GSHEET["tracked_stocks"] = spreadsheet.worksheet("tracked_stocks")
 
         # 使用者設定工作表（推播開關等）
         try:
@@ -131,7 +130,7 @@ def init_google_sheets() -> bool:
         except gspread.exceptions.WorksheetNotFound:
             worksheet_settings = spreadsheet.add_worksheet(title="user_settings", rows=1000, cols=4)
             worksheet_settings.append_row(["user_id", "push_enabled", "last_updated", "notes"])
-
+        GSHEET["user_settings"] = spreadsheet.worksheet("user_settings")
         print("Google Sheets 初始化成功")
         return True
 
