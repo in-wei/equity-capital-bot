@@ -88,6 +88,7 @@ creds_path = "/app/credentials/service-account.json"
 if not os.path.exists(creds_path) and GOOGLE_CREDENTIALS_JSON:
     with open(creds_path, "w") as f:
         f.write(GOOGLE_CREDENTIALS_JSON)
+    print("新增JSON檔案")
 
 # ─── 3. 初始化 FastAPI、LineBot、Google Sheets ──────────────────────────────
 
@@ -119,6 +120,7 @@ def init_google_sheets() -> bool:
         #    print("JSON 格式完全錯誤！", e)
         #creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         creds = service_account.Credentials.from_service_account_file(creds_path, scopes=SCOPES)
+        print(f"creds -> {creds}")
         gc = gspread.authorize(creds)
         spreadsheet = gc.open_by_key(SHEET_ID)
 
