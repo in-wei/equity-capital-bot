@@ -118,6 +118,7 @@ def init_google_sheets() -> bool:
 
         # 追蹤股票工作表
         try:
+            print("追蹤表格初始化")
             worksheet_stocks = spreadsheet.worksheet("tracked_stocks")
         except gspread.exceptions.WorksheetNotFound:
             worksheet_stocks = spreadsheet.add_worksheet(title="tracked_stocks", rows=1000, cols=4)
@@ -126,6 +127,7 @@ def init_google_sheets() -> bool:
 
         # 使用者設定工作表（推播開關等）
         try:
+            print("使用者表格初始化")
             worksheet_settings = spreadsheet.worksheet("user_settings")
         except gspread.exceptions.WorksheetNotFound:
             worksheet_settings = spreadsheet.add_worksheet(title="user_settings", rows=1000, cols=4)
