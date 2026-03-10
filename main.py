@@ -73,7 +73,7 @@ YOUR_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 YOUR_CHANNEL_SECRET      = os.getenv("LINE_CHANNEL_SECRET")
 GROQ_API_KEY             = os.getenv("GROQ_API_KEY")
 SHEET_ID                 = os.getenv("SHEET_ID")
-GOOGLE_CREDENTIALS_JSON  = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+GOOGLE_CREDENTIALS_JSON  = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
 
 if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
     raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET")
@@ -100,7 +100,12 @@ def init_google_sheets() -> bool:
         return False
 
     try:
-        creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+        try:
+            creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+            print("JSON 解析成功，client_email:", creds_dict.get("client_email"))
+            print("private_key 前幾個字元:", creds_dict.get("private_key", "")[:50])
+        except json.JSONDecodeError as e:
+            print("JSON 格式完全錯誤！", e)
         creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         gc = gspread.authorize(creds)
         spreadsheet = gc.open_by_key(SHEET_ID)
