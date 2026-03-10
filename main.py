@@ -83,7 +83,7 @@ GOOGOE_SHEET_ID = os.getenv("SHEET_ID")
 WORKSHEET_NAME = "tracked_stocks"          # 工作表名稱，可自訂
 WORKSHEET_SETTINGS = "user_settings"    # 使用者設定（含推播開關）
 
-Local_Memorry = True
+Local_Memorry = False
 
 if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
     raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET")
