@@ -296,28 +296,26 @@ def handle_message(event: MessageEvent):
                         else:
                             reply_text = f"你的清單中沒有 {code}"
             elif matched_cmd == "list":
-                    if Local_Memorry:  
-                        stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
-                        push_status = "已開啟" if USER_SETTINGS[user_id]["push_enabled"] else "已關閉"
-                        if not stocks:
-                            reply_text = "你目前沒有追蹤任何股票"
-                        else:
-                            reply_text = f"追蹤清單（{len(stocks)}檔）：\n" + "\n".join(stocks) + f"\n\n每日推播：{push_status}"
-                    else:
-                        stocks = sorted(get_user_tracked_stocks(user_id))
-                        if not stocks:
-                            reply_text = "你目前沒有追蹤任何股票"
-                        else:
-                            # 因為沒有 push_enabled 欄位，暫時寫死或移除此行
-                            reply_text = f"追蹤清單（{len(stocks)}檔）：\n" + "\n".join(stocks)
-            elif matched_cmd in ("push_on", "push_off"):
                 if Local_Memorry:
-                    USER_SETTINGS[user_id]["push_enabled"] = (matched_cmd == "push_on")
-                    status = "開啟" if USER_SETTINGS[user_id]["push_enabled"] else "關閉"
+                    stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
+                    push_status = "已開啟" if USER_SETTINGS[user_id]["push_enabled"] else "已關閉"
                 else:
-                    set_push_enabled(user_id, True)
+                    stocks = sorted(get_user_tracked_stocks(user_id))
+                    push_status = "已開啟" if get_push_enabled(user_id) else "已關閉"
+            
+                if not stocks:
+                    reply_text = f"你目前沒有追蹤任何股票\n推播狀態：{push_status}"
+                else:
+                    reply_text = f"追蹤清單（{len(stocks)}檔）：\n" + "\n".join(stocks) + f"\n\n每日推播：{push_status}"
+            elif matched_cmd in ("push_on", "push_off"):
+                enabled = (matched_cmd == "push_on")
+                if Local_Memorry:
+                    USER_SETTINGS[user_id]["push_enabled"] = enabled
+                else:
+                    set_push_enabled(user_id, enabled)
+                status = "開啟" if enabled else "關閉"
                 reply_text = f"每日推播已{status}（晚上18:00更新）"
-
+                
             elif matched_cmd == "analyze":
                 parts = arg_part.split(maxsplit=1)
                 raw_code = parts[0].strip().upper() if parts else ""
