@@ -1,5 +1,5 @@
 import sys
-import os
+import os, json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from threading import Thread
@@ -22,6 +22,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 import uvicorn
+from google.oauth2 import service_account
 
 # ────────────────────────────────────────────────
 # 全域設定與後綴優先順序（這裡統一管理，易修改）
@@ -76,6 +77,14 @@ YOUR_CHANNEL_SECRET      = os.getenv("LINE_CHANNEL_SECRET")
 GROQ_API_KEY             = os.getenv("GROQ_API_KEY")
 OLLAMA_HOST              = os.getenv("OLLAMA_HOST")  # 可選
 
+creds_json = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+creds = service_account.Credentials.from_service_account_info(json.loads(creds_json))
+GOOGOE_SHEET_ID = os.getenv("SHEET_ID")
+WORKSHEET_NAME = "tracked_stocks"          # 工作表名稱，可自訂
+WORKSHEET_SETTINGS = "user_settings"    # 使用者設定（含推播開關）
+
+Local_Memorry = True
+
 if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
     raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET")
 
@@ -89,6 +98,39 @@ line_bot_api = LineBotApi(YOUR_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(YOUR_CHANNEL_SECRET)
 
 start_service = datetime.now(ZoneInfo("Asia/Taipei"))
+
+# 全域 client（啟動時建立一次）
+gc = None
+worksheet = None
+
+def init_google_sheets():
+    global gc, worksheet_stocks, worksheet_settings
+    try:
+        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        spreadsheet = gc.open_by_key(SHEET_ID)
+
+        # 股票工作表
+        try:
+            worksheet_stocks = spreadsheet.worksheet(WORKSHEET_STOCKS)
+        except gspread.exceptions.WorksheetNotFound:
+            worksheet_stocks = spreadsheet.add_worksheet(title=WORKSHEET_STOCKS, rows=1000, cols=4)
+            worksheet_stocks.append_row(["user_id", "stock_code", "added_at", "memo"])
+
+        # 設定工作表
+        try:
+            worksheet_settings = spreadsheet.worksheet(WORKSHEET_SETTINGS)
+        except gspread.exceptions.WorksheetNotFound:
+            worksheet_settings = spreadsheet.add_worksheet(title=WORKSHEET_SETTINGS, rows=1000, cols=4)
+            worksheet_settings.append_row(["user_id", "push_enabled", "last_updated", "notes"])
+
+        print("Google Sheets 初始化完成（stocks + settings）")
+    except Exception as e:
+        print(f"Google Sheets 連線失敗: {e}")
+        worksheet_stocks = worksheet_settings = None
+
+# 在程式最開頭（import 後、app = FastAPI() 前）呼叫
+init_google_sheets()
 
 # ────────────────────────────────────────────────
 # 路由 - 健康檢查與 debug
@@ -215,31 +257,58 @@ def handle_message(event: MessageEvent):
                     if stock_code is None:
                         reply_text = suffix_info
                     else:
-                        USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
-                        reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前共 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔"
+                        if Local_Memorry:
+                            USER_SETTINGS[user_id]["tracked_stocks"].add(stock_code)
+                            reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前共 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔"
+                        else:
+                            if is_stock_tracked(user_id, stock_code):
+                                reply_text = f"你已經在追蹤 {stock_code} 了～"
+                            else:
+                                add_tracked_stock(user_id, stock_code)
+                                count = len(get_user_tracked_stocks(user_id))
+                                reply_text = f"已新增追蹤：{stock_code}（{suffix_info}）\n目前共 {count} 檔"
 
             elif matched_cmd == "remove":
                 if not arg_part:
                     reply_text = "請提供要移除的代碼，例如：/移除 2330"
                 else:
                     code = arg_part.strip().upper()
-                    if code in USER_SETTINGS[user_id]["tracked_stocks"]:
-                        USER_SETTINGS[user_id]["tracked_stocks"].remove(code)
-                        reply_text = f"已移除 {code}（剩餘 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔）"
+                    if Local_Memorry:
+                        if code in USER_SETTINGS[user_id]["tracked_stocks"]:
+                            USER_SETTINGS[user_id]["tracked_stocks"].remove(code)
+                            reply_text = f"已移除 {code}（剩餘 {len(USER_SETTINGS[user_id]['tracked_stocks'])} 檔）"
+                        else:
+                            reply_text = f"你的清單中沒有 {code}"
                     else:
-                        reply_text = f"你的清單中沒有 {code}"
-
+                        stock_code, _ = resolve_stock_code(code)
+                        if stock_code is None:
+                            stock_code = code  # 若解析失敗，就用原輸入試試
+                        if remove_tracked_stock(user_id, stock_code):
+                            count = len(get_user_tracked_stocks(user_id))
+                            reply_text = f"已移除 {stock_code}（剩餘 {count} 檔）"
+                        else:
+                            reply_text = f"你的清單中沒有 {code}"
             elif matched_cmd == "list":
-                stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
-                push_status = "已開啟" if USER_SETTINGS[user_id]["push_enabled"] else "已關閉"
-                if not stocks:
-                    reply_text = "你目前沒有追蹤任何股票"
-                else:
-                    reply_text = f"追蹤清單（{len(stocks)}檔）：\n" + "\n".join(stocks) + f"\n\n每日推播：{push_status}"
-
+                    if Local_Memorry:  
+                        stocks = sorted(USER_SETTINGS[user_id]["tracked_stocks"])
+                        push_status = "已開啟" if USER_SETTINGS[user_id]["push_enabled"] else "已關閉"
+                        if not stocks:
+                            reply_text = "你目前沒有追蹤任何股票"
+                        else:
+                            reply_text = f"追蹤清單（{len(stocks)}檔）：\n" + "\n".join(stocks) + f"\n\n每日推播：{push_status}"
+                    else:
+                        stocks = sorted(get_user_tracked_stocks(user_id))
+                        if not stocks:
+                            reply_text = "你目前沒有追蹤任何股票"
+                        else:
+                            # 因為沒有 push_enabled 欄位，暫時寫死或移除此行
+                            reply_text = f"追蹤清單（{len(stocks)}檔）：\n" + "\n".join(stocks)
             elif matched_cmd in ("push_on", "push_off"):
-                USER_SETTINGS[user_id]["push_enabled"] = (matched_cmd == "push_on")
-                status = "開啟" if USER_SETTINGS[user_id]["push_enabled"] else "關閉"
+                if Local_Memorry:
+                    USER_SETTINGS[user_id]["push_enabled"] = (matched_cmd == "push_on")
+                    status = "開啟" if USER_SETTINGS[user_id]["push_enabled"] else "關閉"
+                else:
+                    set_push_enabled(user_id, True)
                 reply_text = f"每日推播已{status}（晚上18:00更新）"
 
             elif matched_cmd == "analyze":
@@ -436,6 +505,81 @@ def resolve_stock_code(raw_code: str) -> tuple[str | None, str]:
         "- 日股：7203 或 7203.T"
     )
 
+# ─────── 取代原本 USER_SETTINGS 的幾個輔助函式 ───────
+
+def get_user_tracked_stocks(user_id: str) -> set:
+    if not worksheet_stocks:
+        return set()
+    try:
+        records = worksheet_stocks.get_all_records()
+        return {row["stock_code"] for row in records if row["user_id"] == user_id}
+    except:
+        return set()
+
+def is_stock_tracked(user_id: str, stock_code: str) -> bool:
+    records = worksheet_stocks.get_all_records() if worksheet_stocks else []
+    return any(row["user_id"] == user_id and row["stock_code"] == stock_code for row in records)
+
+def add_tracked_stock(user_id: str, stock_code: str, memo: str = ""):
+    if not worksheet_stocks:
+        return
+    now_str = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d %H:%M:%S")
+    worksheet_stocks.append_row([user_id, stock_code, now_str, memo])
+
+def remove_tracked_stock(user_id: str, stock_code: str) -> bool:
+    if not worksheet_stocks:
+        return False
+    try:
+        records = worksheet_stocks.get_all_records()
+        for i, row in enumerate(records, start=2):
+            if row["user_id"] == user_id and row["stock_code"] == stock_code:
+                worksheet_stocks.delete_rows(i)
+                return True
+        return False
+    except:
+        return False
+        
+def get_push_enabled(user_id: str) -> bool:
+    """取得使用者的推播開關，預設 True"""
+    if not worksheet_settings:
+        return True
+    try:
+        records = worksheet_settings.get_all_records()
+        for row in records:
+            if row["user_id"] == user_id:
+                return row.get("push_enabled", "TRUE").upper() == "TRUE"
+        # 沒找到 → 預設開啟，並新增一筆
+        set_push_enabled(user_id, True)
+        return True
+    except Exception:
+        return True
+
+def set_push_enabled(user_id: str, enabled: bool):
+    """新增或更新使用者的推播設定"""
+    if not worksheet_settings:
+        return
+    try:
+        records = worksheet_settings.get_all_records()
+        row_index = None
+        for i, row in enumerate(records, start=2):
+            if row["user_id"] == user_id:
+                row_index = i
+                break
+
+        now_str = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d %H:%M:%S")
+        value = "TRUE" if enabled else "FALSE"
+
+        if row_index is not None:
+            # 更新現有列
+            worksheet_settings.update(f"B{row_index}", value)
+            worksheet_settings.update(f"C{row_index}", now_str)
+        else:
+            # 新增
+            worksheet_settings.append_row([user_id, value, now_str, ""])
+    except Exception as e:
+        print(f"更新 push_enabled 失敗: {e}")
+
+
 # ────────────────────────────────────────────────
 # 工具函式（圖片上傳等）
 # ────────────────────────────────────────────────
@@ -457,18 +601,52 @@ def daily_analysis():
     if datetime.now(ZoneInfo("Asia/Taipei")).weekday() in (5, 6):
         print("六、日不傳送")
         return
-    
-    for user_id, settings in USER_SETTINGS.items():
-        if not settings["push_enabled"] or not settings["tracked_stocks"]:
-            continue
 
-        print(f"推播給 {user_id}，追蹤 {len(settings['tracked_stocks'])} 檔")
-        for code in sorted(settings["tracked_stocks"]):
-            try:
-                analysis = analyze_stock_trend(code, "1y")
-                line_bot_api.push_message(user_id, TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
-            except Exception as e:
-                print(f"推播 {code} 到 {user_id} 失敗: {e}")
+    if Local_Memorry:
+        for user_id, settings in USER_SETTINGS.items():
+            if not settings["push_enabled"] or not settings["tracked_stocks"]:
+                continue
+    
+            print(f"推播給 {user_id}，追蹤 {len(settings['tracked_stocks'])} 檔")
+            for code in sorted(settings["tracked_stocks"]):
+                try:
+                    analysis = analyze_stock_trend(code, "1y")
+                    line_bot_api.push_message(user_id, TextSendMessage(text=f"每日跟進 {code}：\n{analysis}"))
+                except Exception as e:
+                    print(f"推播 {code} 到 {user_id} 失敗: {e}")
+    else:
+        try:
+            # 取得所有有開啟推播的使用者
+            settings_records = worksheet_settings.get_all_records()
+            active_users = {
+                row["user_id"] for row in settings_records
+                if row.get("push_enabled", "FALSE").upper() == "TRUE"
+            }
+    
+            # 取得所有追蹤股票（只處理有推播開啟的使用者）
+            stocks_records = worksheet_stocks.get_all_records()
+            from collections import defaultdict
+            user_stocks = defaultdict(set)
+            for row in stocks_records:
+                uid = row["user_id"]
+                if uid in active_users:
+                    user_stocks[uid].add(row["stock_code"])
+    
+            for user_id, stocks in user_stocks.items():
+                if not stocks:
+                    continue
+                print(f"推播給 {user_id}，{len(stocks)} 檔股票")
+                for code in sorted(stocks):
+                    try:
+                        analysis = analyze_stock_trend(code, "1y")
+                        line_bot_api.push_message(
+                            user_id,
+                            TextSendMessage(text=f"每日跟進 {code}：\n{analysis}")
+                        )
+                    except Exception as e:
+                        print(f"推播失敗 {user_id} {code}: {e}")
+        except Exception as e:
+            print(f"推播流程錯誤: {e}")
     print("=== 定時分析結束 ===")
 
 scheduler = BackgroundScheduler()
