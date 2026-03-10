@@ -52,7 +52,9 @@ SUFFIX_PRIORITY = [
 ]
 
 SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets"
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive"
 ]
 
 # 執行時全域狀態
@@ -132,6 +134,7 @@ def init_google_sheets() -> bool:
             creds.refresh(request=None)  # 強制刷新 token
             print(f"刷新後 creds.token: {creds.token}")  # 應有長字串 token
         print(f"creds.to_json(): {creds.to_json()}")  # 輸出完整 JSON（隱藏 private_key）
+        
         gc = gspread.authorize(creds)
         print(f"gc.auth.token -> {gc.auth.token}")
         sheets_list = gc.list_spreadsheet_files()  # 列出所有 Sheets
