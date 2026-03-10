@@ -5,6 +5,7 @@
 import sys
 import os
 import json
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from threading import Thread
@@ -27,6 +28,10 @@ from apscheduler.triggers.cron import CronTrigger
 
 from google.oauth2 import service_account
 import gspread
+
+print("UTC 現在時間:", datetime.utcnow().isoformat())
+print("本地時間 (Asia/Taipei):", datetime.now(ZoneInfo("Asia/Taipei")).isoformat())
+print("時間戳 (秒):", int(time.time()))
 
 # ─── 1. 全域設定與常數 ──────────────────────────────────────────────────────
 
@@ -100,6 +105,9 @@ def init_google_sheets() -> bool:
     try:
         try:
             creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+            print("使用 client_email:", creds_dict.get("client_email"))
+            print("private_key_id:", creds_dict.get("private_key_id"))
+            print("key 長度:", len(creds_dict.get("private_key", "")))
             print("JSON 解析成功，client_email:", creds_dict.get("client_email"))
             print("private_key 前幾個字元:", creds_dict.get("private_key", "")[:50])
         except json.JSONDecodeError as e:
