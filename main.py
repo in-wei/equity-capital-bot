@@ -23,6 +23,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 import uvicorn
 from google.oauth2 import service_account
+import gspread
 
 # ────────────────────────────────────────────────
 # 全域設定與後綴優先順序（這裡統一管理，易修改）
