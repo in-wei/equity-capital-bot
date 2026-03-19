@@ -291,8 +291,8 @@ def handle_message(event: MessageEvent):
             else:
                 reply_text = f"{CONFIG['response_prefix']}：你說「{text}」… 要分析股票嗎？試試：/分析 2330 或 直接輸入代碼"
 
-            if reply_text:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+            
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
         except Exception as e:
             print(f"指令處理失敗: {e}")
