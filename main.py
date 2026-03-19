@@ -414,10 +414,12 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
     """核心技術分析函式：抓資料 → 計算指標 → 產生 Prompt → 呼叫 Groq LLM"""
     try:
         stock = yf.Ticker(stock_code)
+        info = stock.info
         hist = stock.history(period=period)
         if hist.empty or len(hist) < 50:
             return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
 
+        price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('regularMarketPreviousClose')
         df = hist.copy()
         close = df['Close']
         high  = df['High']
@@ -498,6 +500,8 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         prompt = f"""
 你是一位專業台股技術分析師，請嚴格遵守以下格式回覆，總長度控制在 250 字以內，不要改變任何標題或結構：
 **股票代碼**：{stock_code}（{period}）
+**股票名稱**：{info.get('shortName', 'N/A')}
+**當前價格**：{price}
 **整體趨勢**：上升 / 下降 / 盤整
 **進場時機**：短期 / 中期 / 無（附1句理由）
 **退場時機**：短期 / 中期 / 無（附1句理由）
@@ -510,7 +514,7 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
 • 成交量變化：{vol_change:+.1f}%
 **短期預測**：{future_trend}（約 {predicted[-1]:.0f}）
 **綜合建議**：一句話總結
-免責聲明：本分析僅供參考，非投資建議。
+**免責聲明：本分析僅供參考，非投資建議。**
 """
 
         client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=GROQ_API_KEY)
