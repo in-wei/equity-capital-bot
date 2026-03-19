@@ -285,6 +285,7 @@ def handle_message(event: MessageEvent):
             elif matched_cmd == "push_stock":
                 if USER_SETTINGS[user_id]["tracked_stocks"]:
                     local_push(user_id, "推送")
+                    reply_text = ""
                 else:
                     reply_text = "清單空空的"
 
@@ -292,14 +293,13 @@ def handle_message(event: MessageEvent):
                 reply_text = f"{CONFIG['response_prefix']}：你說「{text}」… 要分析股票嗎？試試：/分析 2330 或 直接輸入代碼"
 
             
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+            
 
         except Exception as e:
             print(f"指令處理失敗: {e}")
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(text="處理時發生錯誤，請稍後再試～")
-            )
+            reply_text="處理時發生錯誤，請稍後再試～"
+        if not reply_text == ""
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
     Thread(target=background_reply, daemon=True).start()
 
