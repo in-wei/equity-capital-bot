@@ -415,6 +415,10 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
     try:
         stock = yf.Ticker(stock_code)
         
+        hist = stock.history(period=period)
+        if hist.empty or len(hist) < 50:
+            return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
+
         info = stock.info
         print({info})
         price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('regularMarketPreviousClose')
@@ -424,16 +428,12 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
 
         # 如果 .info 沒給價格 → 改用最近一天 history
         if price is None or price == 'N/A':
-            hist = stock.history(period="2d")  # 抓最近兩天，避免只有一天
+            #hist = stock.history(period="2d")  # 抓最近兩天，避免只有一天
             if not hist.empty:
                 latest_close = hist['Close'].iloc[-1]
                 price = f"{latest_close:.2f} (最近收盤)"
             else:
                 price = "無法取得"
-
-        hist = stock.history(period=period)
-        if hist.empty or len(hist) < 50:
-            return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
 
         df = hist.copy()
         close = df['Close']
@@ -515,7 +515,6 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         prompt = f"""
 你是一位專業台股技術分析師，請嚴格遵守以下格式回覆，總長度控制在 250 字以內，不要改變任何標題或結構：
 **股票代碼**：{stock_code}（{period}）
-**股票名稱**：{info.get('longName', 'N/A')}
 **當前價格**：{price}
 **整體趨勢**：上升 / 下降 / 盤整
 **進場時機**：短期 / 中期 / 無（附1句理由）
