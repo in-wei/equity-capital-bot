@@ -38,6 +38,7 @@ COMMAND_ALIASES = {
     "push_on":  ["/push on", "/推播開", "/開啟推播", "push on", "push 开", "開推播"],
     "push_off": ["/push off", "/推播關", "/關閉推播", "push off", "push 关", "關推播"],
     "analyze":  ["/分析", "/analyze", "分析", "查", "stock", "trend", "檢視"],
+    "push_stock": ["/push_stock", "推送"]
 }
 
 # 後綴嘗試順序（影響股票代碼自動補完的優先級）
@@ -84,12 +85,15 @@ GOOGLE_CREDENTIALS_JSON  = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
 if not YOUR_CHANNEL_ACCESS_TOKEN or not YOUR_CHANNEL_SECRET:
     raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN 或 LINE_CHANNEL_SECRET")
 
-creds_path = "/app/credentials/service-account.json"
+creds_path = "/app/credentials/powerful-decker-450508-c6-634fa64f0bc7.json"
 if not os.path.exists(creds_path) and GOOGLE_CREDENTIALS_JSON:
     with open(creds_path, "w") as f:
         f.write(GOOGLE_CREDENTIALS_JSON)
     print("新增JSON檔案")
-
+if not os.path.exists(creds_path) and GOOGLE_CREDENTIALS_JSON:
+    print("錯誤")
+else:
+    print("成功")
 # ─── 3. 初始化 FastAPI、LineBot、Google Sheets ──────────────────────────────
 
 app = FastAPI()
@@ -277,6 +281,9 @@ def handle_message(event: MessageEvent):
             elif matched_cmd == "analyze":
                 reply_text = _handle_analyze(arg_part)
 
+            elif matched_cmd == "push_stock":
+                local_push(user_id, "推送")
+
             else:
                 reply_text = f"{CONFIG['response_prefix']}：你說「{text}」… 要分析股票嗎？試試：/分析 2330 或 直接輸入代碼"
 
@@ -370,6 +377,7 @@ def _handle_analyze(arg: str) -> str:
 
     analysis = analyze_stock_trend(code, period)
     return f"{CONFIG['response_prefix']}：\n{analysis}\n（{code} {info}）"
+
 
 # ─── 6. 股票代碼解析與技術分析核心 ─────────────────────────────────────────
 
@@ -595,6 +603,44 @@ def set_push_enabled(user_id: str, enabled: bool):
 
 # ─── 8. 定時推播任務 ──────────────────────────────────────────────────────
 
+def local_push(user_id: str, text_str: str):
+    for code in sorted(USER_SETTINGS[user_id]["tracked_stocks"]):
+        try:
+            analysis = analyze_stock_trend(code, "1y")
+            line_bot_api.push_message(user_id, TextSendMessage(
+                text=f"{text_str} {code}：\n{analysis}"
+            ))
+        except Exception as e:
+            print(f"推播失敗 {uid} {code}: {e}")
+
+def sheet_push(user_id: str, text_str: str):
+    try:
+        settings = worksheet_settings.get_all_records()
+        active_users = {
+            r["user_id"] for r in settings
+            if r.get("push_enabled", "FALSE").upper() == "TRUE"
+        }
+
+        from collections import defaultdict
+        user_stocks = defaultdict(set)
+        for r in worksheet_stocks.get_all_records():
+            if r["user_id"] in active_users:
+                user_stocks[r["user_id"]].add(r["stock_code"])
+
+        for uid, stocks in user_stocks.items():
+            if not stocks:
+                continue
+            for code in sorted(stocks):
+                try:
+                    analysis = analyze_stock_trend(code, "1y")
+                    line_bot_api.push_message(uid, TextSendMessage(
+                        text=f"{text_str} {code}：\n{analysis}"
+                    ))
+                except Exception as e:
+                    print(f"推播失敗 {uid} {code}: {e}")
+    except Exception as e:
+        print(f"定時推播整體錯誤: {e}")
+
 def daily_analysis():
     """每天 18:00 對所有開啟推播的使用者，推播其追蹤清單的分析"""
     print("=== 定時分析開始 ===")
@@ -604,31 +650,26 @@ def daily_analysis():
         return
 
     if M_Local_Memorry:
+        
         for uid, setting in USER_SETTINGS.items():
             if not setting["push_enabled"] or not setting["tracked_stocks"]:
                 continue
-            for code in sorted(setting["tracked_stocks"]):
-                try:
-                    analysis = analyze_stock_trend(code, "1y")
-                    line_bot_api.push_message(uid, TextSendMessage(
-                        text=f"每日跟進 {code}：\n{analysis}"
-                    ))
-                except Exception as e:
-                    print(f"推播失敗 {uid} {code}: {e}")
+            local_push(uid, "每日跟進")
     else:
+        #sheet_push("每日跟進")
         try:
             settings = worksheet_settings.get_all_records()
             active_users = {
                 r["user_id"] for r in settings
                 if r.get("push_enabled", "FALSE").upper() == "TRUE"
             }
-
+    
             from collections import defaultdict
             user_stocks = defaultdict(set)
             for r in worksheet_stocks.get_all_records():
                 if r["user_id"] in active_users:
                     user_stocks[r["user_id"]].add(r["stock_code"])
-
+    
             for uid, stocks in user_stocks.items():
                 if not stocks:
                     continue
@@ -636,13 +677,13 @@ def daily_analysis():
                     try:
                         analysis = analyze_stock_trend(code, "1y")
                         line_bot_api.push_message(uid, TextSendMessage(
-                            text=f"每日跟進 {code}：\n{analysis}"
+                            text=f"{text_str} {code}：\n{analysis}"
                         ))
                     except Exception as e:
                         print(f"推播失敗 {uid} {code}: {e}")
         except Exception as e:
             print(f"定時推播整體錯誤: {e}")
-
+    
     print("=== 定時分析結束 ===")
 
 
