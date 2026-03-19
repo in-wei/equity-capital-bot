@@ -287,13 +287,10 @@ def handle_message(event: MessageEvent):
                     local_push(user_id, "推送")
                     reply_text = ""
                 else:
-                    reply_text = "清單空空的"
+                    reply_text = "清單空空的~~"
 
             else:
                 reply_text = f"{CONFIG['response_prefix']}：你說「{text}」… 要分析股票嗎？試試：/分析 2330 或 直接輸入代碼"
-
-            
-            
 
         except Exception as e:
             print(f"指令處理失敗: {e}")
@@ -381,7 +378,7 @@ def _handle_analyze(arg: str) -> str:
         return info
 
     analysis = analyze_stock_trend(code, period)
-    return f"{CONFIG['response_prefix']}：\n{analysis}\n（{code} {info}）"
+    return f"{CONFIG['response_prefix']}：\n{analysis}\n"
 
 
 # ─── 6. 股票代碼解析與技術分析核心 ─────────────────────────────────────────
@@ -420,12 +417,8 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
             return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
 
         info = stock.info
-        #print(f"info -> {info}")
         price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('regularMarketPreviousClose')
-        #prev_close = info.get('regularMarketPreviousClose', 'N/A')
-        #currency = info.get('currency', '未知')
-        #short_name = info.get('shortName', symbol)
-
+        
         # 如果 .info 沒給價格 → 改用最近一天 history
         if price is None or price == 'N/A':
             #hist = stock.history(period="2d")  # 抓最近兩天，避免只有一天
