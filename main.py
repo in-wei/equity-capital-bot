@@ -416,6 +416,7 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         stock = yf.Ticker(stock_code)
         
         info = stock.info
+        print({info})
         price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('regularMarketPreviousClose')
         prev_close = info.get('regularMarketPreviousClose', 'N/A')
         currency = info.get('currency', '未知')
