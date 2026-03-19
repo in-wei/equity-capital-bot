@@ -422,9 +422,9 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         info = stock.info
         print({info})
         price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('regularMarketPreviousClose')
-        prev_close = info.get('regularMarketPreviousClose', 'N/A')
-        currency = info.get('currency', '未知')
-        short_name = info.get('shortName', symbol)
+        #prev_close = info.get('regularMarketPreviousClose', 'N/A')
+        #currency = info.get('currency', '未知')
+        #short_name = info.get('shortName', symbol)
 
         # 如果 .info 沒給價格 → 改用最近一天 history
         if price is None or price == 'N/A':
