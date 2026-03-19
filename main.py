@@ -515,6 +515,7 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
         prompt = f"""
 你是一位專業台股技術分析師，請嚴格遵守以下格式回覆，總長度控制在 250 字以內，不要改變任何標題或結構：
 **股票代碼**：{stock_code}（{period}）
+**股票名稱**：{info.get('longName','N/A')}(轉換成中文的股票名稱)
 **當前價格**：{price}
 **整體趨勢**：上升 / 下降 / 盤整
 **進場時機**：短期 / 中期 / 無（附1句理由）
