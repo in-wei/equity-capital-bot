@@ -298,7 +298,7 @@ def handle_message(event: MessageEvent):
         except Exception as e:
             print(f"指令處理失敗: {e}")
             reply_text="處理時發生錯誤，請稍後再試～"
-        if not reply_text == ""
+        if not reply_text == "":
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
     Thread(target=background_reply, daemon=True).start()
