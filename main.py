@@ -414,12 +414,26 @@ def analyze_stock_trend(stock_code: str, period: str = "1y") -> str:
     """核心技術分析函式：抓資料 → 計算指標 → 產生 Prompt → 呼叫 Groq LLM"""
     try:
         stock = yf.Ticker(stock_code)
+        
         info = stock.info
+        price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('regularMarketPreviousClose')
+        prev_close = info.get('regularMarketPreviousClose', 'N/A')
+        currency = info.get('currency', '未知')
+        short_name = info.get('shortName', symbol)
+
+        # 如果 .info 沒給價格 → 改用最近一天 history
+        if price is None or price == 'N/A':
+            hist = stock.history(period="2d")  # 抓最近兩天，避免只有一天
+            if not hist.empty:
+                latest_close = hist['Close'].iloc[-1]
+                price = f"{latest_close:.2f} (最近收盤)"
+            else:
+                price = "無法取得"
+
         hist = stock.history(period=period)
         if hist.empty or len(hist) < 50:
             return f"資料不足（僅 {len(hist)} 筆），請檢查代碼或期間。"
 
-        price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('regularMarketPreviousClose')
         df = hist.copy()
         close = df['Close']
         high  = df['High']
